@@ -1,0 +1,85 @@
+$ bun install --frozen-lockfile
+bun install v1.3.14 (0d9b296a)
+
+Checked 503 installs across 635 packages (no changes) [248.00ms]
+$ bun run typecheck
+$ tsc --noEmit
+$ bun test
+bun test v1.3.14 (0d9b296a)
+
+test/agent-compaction.test.ts:
+(pass) non-destructive chat compaction > persists a summary overlay, preserves raw history, and rehydrates it [22.59ms]
+(pass) non-destructive chat compaction > automatically compacts above the configured threshold [3.87ms]
+(pass) non-destructive chat compaction > moves the boundary rather than splitting a tool interaction [7.34ms]
+
+test/agent-message-context.test.ts:
+(pass) durable message sending and context > persists transcript history and isolates sessions [1.52ms]
+(pass) durable message sending and context > persists editable context and injects it into model requests [1.14ms]
+(pass) durable message sending and context > streams ordered turn events and returns the stored completion [0.87ms]
+
+test/live.e2e.test.ts:
+(skip) live Cloudflare E2E (set RUN_LIVE_E2E=1 or run bun run test:e2e)
+
+test/agent-tools.test.ts:
+(pass) typed tool calling > executes the Toolkit handler and continues to a final answer [3.67ms]
+(pass) typed tool calling > fails with the typed loop-limit error after the configured bound [6.70ms]
+
+test/agent-rpc-protocol.test.ts:
+(pass) shared AgentRpcs schema and NDJSON serialization > decodes branded payloads and rejects malformed session ids [0.85ms]
+(pass) shared AgentRpcs schema and NDJSON serialization > round-trips stream events and typed errors through schemas and NDJSON [0.89ms]
+
+ 10 pass
+ 1 skip
+ 0 fail
+ 61 expect() calls
+Ran 11 tests across 5 files. [907.00ms]
+$ bun run build
+$ vite build && rm -rf .tanstack src/.tanstack
+vite v8.0.7 building client environment for production...
+[2Ktransforming...✓ 296 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/client/assets/main-CYj1zwKt.css              6.63 kB │ gzip:  2.01 kB
+dist/client/assets/routes-yNLh44DI.js            79.01 kB │ gzip: 27.78 kB
+dist/client/assets/RegistryContext-D1Z4K7lB.js  156.69 kB │ gzip: 51.41 kB
+dist/client/assets/main-B4eZkHLw.js             307.69 kB │ gzip: 96.35 kB
+
+✓ built in 276ms
+vite v8.0.7 building ssr environment for production...
+[2Ktransforming...✓ 52 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/server/assets/start-S6R1ogjB.js                        0.14 kB │ gzip:  0.13 kB
+dist/server/assets/_tanstack-start-manifest_v-BTqGqSIw.js   0.68 kB │ gzip:  0.38 kB
+dist/server/assets/router-BhE5uAZ0.js                       2.48 kB │ gzip:  1.04 kB
+dist/server/assets/routes-C7km538T.js                      20.02 kB │ gzip:  5.32 kB
+dist/server/server.js                                      38.01 kB │ gzip: 10.50 kB
+
+✓ built in 72ms
+$ verify temporary route trees are absent
+temporary route trees absent
+$ bun run typecheck (post-build)
+$ tsc --noEmit
+$ npx react-doctor@latest --verbose
+  
+[32m✔[39m Scanned 33 files in 13.3s [~8 workers]
+✔ Scanned 33 files in 14.2s
+
+React Doctor — alchemy-agent
+Score: 100 / 100 Great
+
+✔ No issues found!
+  Full diagnostics written to /var/folders/1d/ypjrh28d5z308qpsfjvh0rhc0000gn/T/react-doctor-120000d5-afbb-4e0b-b68e-16b6bed18721
+
+  ────────────────────────────────────────────────────────────
+
+  Share: https://react.doctor/share?p=alchemy-agent&s=100
+  Tell others how you did on socials
+
+  Docs: https://react.doctor/docs
+  Learn more about fixing issues, setting up CI/CD, and
+  configuring rules with a config file
+
+  GitHub: https://github.com/millionco/react-doctor
+  Report issues and star the repository!
+

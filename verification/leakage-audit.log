@@ -1,0 +1,18 @@
+$ rg -n Cloudflare runtime references
+src/server/durable-object-session-store.ts:20:    const state = yield* Cloudflare.DurableObjectState;
+src/routes/rpc.ts:2:import { env } from "cloudflare:workers";
+src/routes/rpc.ts:8:      ANY: ({ request }) => env.BACKEND.fetch(request),
+src/env.d.ts:3:declare module "cloudflare:workers" {
+
+$ rg -n Promise/fetch/env reads
+src/routes/rpc.ts:8:      ANY: ({ request }) => env.BACKEND.fetch(request),
+
+$ rg unchecked any forms in all source
+
+$ rg non-const assertions/casts in all source (imports excluded)
+
+$ rg non-null assertions
+
+$ rg TypeScript suppression directives
+
+$ find temporary or generated route trees

@@ -1,0 +1,56 @@
+$ RUN_LIVE_E2E=1 bun test test/live.e2e.test.ts
+bun test v1.3.14 (0d9b296a)
+
+test/live.e2e.test.ts:
+Plan: 2 to create
+[AgentBackend] create
+[AgentBackend/AI] create
+[AgentBackend/AgentSession] create
+[Website] create
+[Website/BACKEND] create
+
+[AgentBackend] pre-creating
+[Website] pre-creating
+[Website] Pre-creating worker...
+[AgentBackend] Pre-creating worker...
+[Website] pending
+[AgentBackend] pending
+[AgentBackend] creating
+[AgentBackend] Uploading worker (516.00 KB) ...
+[Website] creating
+[AgentBackend] created
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 318ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 230ms[39m
+[Website] Checking assets...
+[Website] Uploaded 0 of 4 assets...
+[Website] Uploaded 2 of 4 assets...
+[Website] Uploaded 3 of 4 assets...
+[Website] Uploaded 4 of 4 assets...
+[Website] Uploading worker (1.71 MB) ...
+[Website] Enabling workers.dev subdomain...
+[Website] created
+[AgentBackend] created
+[Website] created
+
+Done: 4 succeeded
+(pass) verifies messages, context, tools, and compaction through shared Effect RPC [16649.27ms]
+Plan: 2 to delete
+[AgentBackend] delete
+[AgentBackend/AI] delete
+[AgentBackend/AgentSession] delete
+[Website] delete
+[Website/BACKEND] delete
+
+[Website] deleting
+[Website] deleted
+[AgentBackend] deleting
+[AgentBackend] deleted
+
+Done: 2 succeeded
+
+ 1 pass
+ 0 fail
+ 11 expect() calls
+Ran 1 test across 1 file. [32.20s]
