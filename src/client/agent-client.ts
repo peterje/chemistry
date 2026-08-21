@@ -1,3 +1,5 @@
+import * as Context from "effect/Context";
+import type * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as AtomRpc from "effect/unstable/reactivity/AtomRpc";
@@ -6,14 +8,14 @@ import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import { AgentRpcs, type SessionId } from "../shared/agent-protocol.ts";
 
 /** Browser transport for the same-origin Effect RPC endpoint. */
-export const AgentRpcProtocol = RpcClient.layerProtocolHttp({
+const agentRpcProtocol = RpcClient.layerProtocolHttp({
   url: "/rpc",
 }).pipe(Layer.provide(FetchHttpClient.layer), Layer.provide(RpcSerialization.layerNdjson));
 
 /** Reactive browser client generated from the shared agent RPC group. */
 export class AgentClient extends AtomRpc.Service<AgentClient>()("AgentClient", {
   group: AgentRpcs,
-  protocol: AgentRpcProtocol,
+  protocol: agentRpcProtocol,
 }) {}
 
 /** Build a reactive session query atom for the selected durable session. */
@@ -32,5 +34,17 @@ export const updateContextAtom = AgentClient.mutation("updateContext");
 /** Mutation atom for manually compacting eligible session history. */
 export const compactSessionAtom = AgentClient.mutation("compactSession");
 
-/** Construct a scoped non-reactive RPC client for streamed message turns. */
-export const makeAgentRpcClient = RpcClient.make(AgentRpcs);
+const acquireAgentStreamClient = RpcClient.make(AgentRpcs);
+
+type AgentStreamClientOperations = Effect.Success<typeof acquireAgentStreamClient>;
+
+/** Scoped non-reactive RPC client for streamed message turns. */
+export class AgentStreamClient extends Context.Service<
+  AgentStreamClient,
+  AgentStreamClientOperations
+>()("AgentStreamClient") {}
+
+/** Browser-backed Layer for streamed message turns. */
+export const AgentStreamClientLive = Layer.effect(AgentStreamClient, acquireAgentStreamClient).pipe(
+  Layer.provide(agentRpcProtocol),
+);

@@ -21,7 +21,7 @@ export const StoredSession = Schema.Struct({
 export interface StoredSession extends Schema.Schema.Type<typeof StoredSession> {}
 
 /** Narrow persistence capability required by the agent application service. */
-export interface SessionStoreShape {
+export interface SessionStoreOperations {
   /** Load an existing record or create one with the supplied initial value. */
   readonly getOrCreate: (
     sessionId: SessionId,
@@ -32,6 +32,6 @@ export interface SessionStoreShape {
 }
 
 /** Effect Context service implemented by Durable Object storage in production. */
-export class SessionStore extends Context.Service<SessionStore, SessionStoreShape>()(
+export class SessionStore extends Context.Service<SessionStore, SessionStoreOperations>()(
   "@alchemy-agent/SessionStore",
 ) {}

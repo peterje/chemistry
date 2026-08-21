@@ -78,11 +78,7 @@ describe("shared AgentRpcs schema and NDJSON serialization", () => {
           values: [encodedEvent, encodedError],
         };
         const parser = RpcSerialization.ndjson.makeUnsafe();
-        const encodedFrame = parser.encode(frame);
-        expect(typeof encodedFrame).toBe("string");
-        if (encodedFrame === undefined) {
-          return yield* Effect.die("NDJSON encoder returned no frame");
-        }
+        const encodedFrame = yield* Schema.decodeUnknownEffect(Schema.String)(parser.encode(frame));
         expect(parser.decode(encodedFrame)).toEqual([frame]);
       }),
     ));

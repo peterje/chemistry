@@ -26,7 +26,7 @@ import {
   assembleModelPrompt,
   compactionStats,
   estimateModelTokens,
-  makeInitialSession,
+  createInitialSession,
   snapshot,
   textMessage,
   transcriptSegmentsFromResponse,
@@ -52,7 +52,7 @@ export const AgentServiceLive = Layer.effect(
     const semaphore = yield* Semaphore.make(1);
 
     const load = Effect.fn("AgentService.load")(function* (sessionId: SessionId) {
-      return yield* store.getOrCreate(sessionId, makeInitialSession(sessionId));
+      return yield* store.getOrCreate(sessionId, createInitialSession(sessionId));
     });
 
     const withLock = <A, E>(effect: Effect.Effect<A, E>) => semaphore.withPermits(1)(effect);

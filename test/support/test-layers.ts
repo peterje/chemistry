@@ -10,15 +10,16 @@ import { MessageIdSource } from "../../src/server/message-id-source.ts";
 import { SessionStore, type StoredSession } from "../../src/server/session-store.ts";
 
 /** Captured provider calls exposed to focused agent tests. */
-export interface TestLanguageModelShape {
+export interface TestLanguageModelObservations {
   /** Return every normalized provider request observed by the fake model. */
   readonly requests: () => Effect.Effect<ReadonlyArray<LanguageModel.ProviderOptions>>;
 }
 
 /** Test-only control surface paired with the fake LanguageModel service. */
-export class TestLanguageModel extends Context.Service<TestLanguageModel, TestLanguageModelShape>()(
-  "@alchemy-agent/TestLanguageModel",
-) {}
+export class TestLanguageModel extends Context.Service<
+  TestLanguageModel,
+  TestLanguageModelObservations
+>()("@alchemy-agent/TestLanguageModel") {}
 
 /** Build an in-memory SessionStore Layer with production-compatible semantics. */
 export const InMemorySessionStore = Layer.effect(

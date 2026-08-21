@@ -107,10 +107,10 @@ Override it with `WORKERS_AI_MODEL`. The value is read with Effect `Config` duri
 Deterministic local tests use a real Effect `LanguageModel` service supplied by a fake provider Layer; they do not mock modules.
 
 ```bash
-bun run typecheck
-bun test
-bun run build
+bun run check
 ```
+
+This runs linting, typechecking, deterministic tests, and the production build. Lefthook runs the same verification before every commit after `bun install`.
 
 The live test deploys the complete stack, calls it with the shared `AgentRpcs` client, verifies all four capabilities against native Workers AI and Durable Object storage, and destroys the stack in `afterAll`:
 

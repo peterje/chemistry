@@ -28,7 +28,7 @@ export const defaultAgentConfiguration: AgentConfiguration = {
 };
 
 /** Application operations implemented by one durable agent runtime. */
-export interface AgentServiceShape {
+export interface AgentServiceOperations {
   /** Load or initialize one session snapshot. */
   readonly getSession: (sessionId: SessionId) => Effect.Effect<SessionSnapshot, AgentRpcError>;
   /** Replace durable context and return the resulting snapshot. */
@@ -46,6 +46,6 @@ export interface AgentServiceShape {
 }
 
 /** Effect Context service for the Think-inspired agent application module. */
-export class AgentService extends Context.Service<AgentService, AgentServiceShape>()(
+export class AgentService extends Context.Service<AgentService, AgentServiceOperations>()(
   "@alchemy-agent/AgentService",
 ) {}

@@ -25,7 +25,7 @@ export const defaultAgentContext = AgentContext.make({
 });
 
 /** Construct a new empty durable session. */
-export const makeInitialSession = (sessionId: SessionId): StoredSession =>
+export const createInitialSession = (sessionId: SessionId): StoredSession =>
   StoredSession.make({
     sessionId,
     context: defaultAgentContext,
@@ -100,12 +100,12 @@ const toPromptMessage = (message: TranscriptMessage): Prompt.Message => {
   }
 };
 
-const visibleHistory = (
-  session: StoredSession,
-): {
+interface VisibleHistory {
   readonly summary: string | undefined;
   readonly messages: ReadonlyArray<TranscriptMessage>;
-} => {
+}
+
+const visibleHistory = (session: StoredSession): VisibleHistory => {
   const overlay = session.compactions.at(-1);
   if (overlay === undefined) {
     return { summary: undefined, messages: session.messages };

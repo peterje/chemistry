@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { useState } from "react";
-import { AgentRpcProtocol, makeAgentRpcClient } from "../agent-client.ts";
+import { AgentStreamClient, AgentStreamClientLive } from "../agent-client.ts";
 import type { AgentStreamEvent, SessionId } from "../../shared/agent-protocol.ts";
 
 /** Send a message over a scoped Effect RPC stream and display live tool events. */
@@ -24,7 +24,7 @@ export function MessageComposer({
     setSending(true);
 
     const program = Effect.gen(function* () {
-      const client = yield* makeAgentRpcClient;
+      const client = yield* AgentStreamClient;
       yield* client
         .sendMessage({ sessionId, prompt: message })
         .pipe(
@@ -41,7 +41,7 @@ export function MessageComposer({
         }),
       ),
       Effect.scoped,
-      Effect.provide(AgentRpcProtocol),
+      Effect.provide(AgentStreamClientLive),
     );
     Effect.runFork(program);
   };

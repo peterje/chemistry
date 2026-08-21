@@ -5,13 +5,13 @@ import * as IdGenerator from "effect/unstable/ai/IdGenerator";
 import { MessageId } from "../shared/agent-protocol.ts";
 
 /** Identifier capability used by transcript and compaction creation. */
-export interface MessageIdSourceShape {
+export interface MessageIdSourceOperations {
   /** Generate one valid message identifier. */
   readonly next: () => Effect.Effect<MessageId>;
 }
 
 /** Injectable transcript identifier source. */
-export class MessageIdSource extends Context.Service<MessageIdSource, MessageIdSourceShape>()(
+export class MessageIdSource extends Context.Service<MessageIdSource, MessageIdSourceOperations>()(
   "@alchemy-agent/MessageIdSource",
 ) {}
 
