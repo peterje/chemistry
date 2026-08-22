@@ -26,14 +26,18 @@ are ready when a new agent starts.
   skipped unless `RUN_LIVE_E2E=1`), `bun run format:check`, and `bun run build` all pass
   offline. `bun run check` runs the whole chain.
 
-### Running the app / browser / live tests REQUIRES Cloudflare credentials
+### Cloudflare authentication for app / browser / live tests
 
-- `bun run dev` (`alchemy dev`) has **no local-only mode**: it uses a remote Cloudflare
-  state store (`Cloudflare.state()`) and native Workers AI (`@cf/zai-org/glm-5.2`). It fails
-  immediately without valid Cloudflare auth.
-- To run non-interactively you must export **`CLOUDFLARE_API_TOKEN`**, a valid 32-hex
-  **`CLOUDFLARE_ACCOUNT_ID`** (on an account with Workers AI access), and **`CI=1`** (so
-  alchemy uses env-var credentials instead of prompting). Alternatively `alchemy login`.
+- Local development uses an Alchemy profile. Run `bun alchemy login --configure`, choose
+  **Cloudflare OAuth**, and complete the browser sign-in. Alchemy stores the credentials in
+  `~/.alchemy/profiles.json`; inspect the active profile with secrets redacted via
+  `bun alchemy profile show`. This is the preferred local setup.
+- `CLOUDFLARE_API_TOKEN` and a valid 32-hex `CLOUDFLARE_ACCOUNT_ID` are primarily for CI
+  and other non-interactive environments. Set `CI=1` when using environment credentials so
+  Alchemy does not try to prompt.
+- The app uses a remote Cloudflare state store (`Cloudflare.state()`) and native Workers AI
+  (`@cf/zai-org/glm-5.2`), so either an authenticated local profile or environment
+  credentials must grant access to the required account services.
 - Local dev pins the Website to `http://localhost:1337` and `AgentBackend` to
   `http://localhost:1338`. Opening `/` durably creates a chat and redirects to
   `/chat/:chatId`; sending a message triggers Workers AI inference (needs the account).
