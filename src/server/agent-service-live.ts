@@ -381,11 +381,15 @@ export const AgentServiceLive = Layer.effect(
     ) {
       const loaded = yield* load(input.sessionId);
       if (input.mode === "continue") {
-        const previousAssistant = loaded.messages.find(
+        const continuedSession: StoredSession = {
+          ...loaded,
+          context: input.requestSnapshot.context,
+        };
+        const previousAssistant = continuedSession.messages.find(
           (message) => message.id === input.assistantMessageId,
         );
         return streamRound(
-          loaded,
+          continuedSession,
           input.prompt,
           1,
           previousAssistant,
@@ -394,16 +398,26 @@ export const AgentServiceLive = Layer.effect(
         );
       }
 
-      const existingUser = loaded.messages.find((message) => message.id === input.userMessageId);
+      const historyIds = new Set(input.requestSnapshot.historyMessageIds);
+      const compactionIds = new Set(input.requestSnapshot.compactionIds);
+      const capturedSession: StoredSession = {
+        ...loaded,
+        context: input.requestSnapshot.context,
+        messages: loaded.messages.filter((message) => historyIds.has(message.id)),
+        compactions: loaded.compactions.filter((compaction) => compactionIds.has(compaction.id)),
+      };
+      const existingUser = capturedSession.messages.find(
+        (message) => message.id === input.userMessageId,
+      );
       const automaticCompaction =
         existingUser === undefined
-          ? yield* compact(loaded, "threshold")
+          ? yield* compact(capturedSession, "threshold")
           : {
-              session: loaded,
+              session: capturedSession,
               result: CompactionResult.make({
                 compacted: false,
                 reason: "below-threshold",
-                stats: compactionStats(loaded),
+                stats: compactionStats(capturedSession),
               }),
             };
       const userTime = yield* Clock.currentTimeMillis;

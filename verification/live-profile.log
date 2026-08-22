@@ -1,0 +1,7 @@
+Profile: default
+
+── Cloudflare ──
+  accessToken: [redacted]
+  expires: in 56m 45s 789ms (2026-08-22T02:27:56.874Z)
+  accountId: ccc682c996bc07a754303977bede28fc
+  source: oauth

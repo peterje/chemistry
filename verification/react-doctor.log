@@ -1,23 +1,9 @@
+$ npx react-doctor@latest --verbose --scope changed --include-untracked
 Scanning uncommitted changes
-
-
-[32m✔[39m Scanned 39 files in 0.8s [~8 workers]
-✔ Scanned 39 files in 2.0s
+Scanned 17 files in 1.9s
 
 React Doctor — alchemy-agent
 Score: 100 / 100 Great
 
-✔ No issues found!
-  Full diagnostics written to /var/folders/1d/ypjrh28d5z308qpsfjvh0rhc0000gn/T/react-doctor-cf8ad84d-c254-4387-8f9a-4dfa110dc50b
-
-  ────────────────────────────────────────────────────────────
-
-  Share: https://react.doctor/share?p=alchemy-agent&s=100
-  Tell others how you did on socials
-
-  Docs: https://react.doctor/docs
-  Learn more about fixing issues, setting up CI/CD, and
-  configuring rules with a config file
-
-  GitHub: https://github.com/millionco/react-doctor
-  Report issues and star the repository!
+No issues found.
+Full diagnostics were written to the command's temporary output directory.

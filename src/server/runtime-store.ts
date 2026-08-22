@@ -32,6 +32,17 @@ export class RuntimeCapacityError extends Schema.TaggedError<RuntimeCapacityErro
   },
 ) {}
 
+/** A replay cursor points beyond the latest durable stream sequence. */
+export class RuntimeCursorError extends Schema.TaggedError<RuntimeCursorError>()(
+  "RuntimeCursorError",
+  {
+    streamId: Schema.String,
+    requestedSequence: Schema.Number,
+    latestSequence: Schema.Number,
+    message: Schema.String,
+  },
+) {}
+
 /** A stale execution owner attempted a generation-fenced mutation. */
 export class RuntimeFenceError extends Schema.TaggedError<RuntimeFenceError>()(
   "RuntimeFenceError",
@@ -60,6 +71,7 @@ export interface RuntimeStoreOperations {
   ) => Effect.Effect<RuntimeState, RuntimePersistenceError>;
   /** Apply and commit one state transition atomically. */
   readonly transact: <A, E>(
+    operation: string,
     sessionId: SessionId,
     initial: RuntimeState,
     mutation: (state: RuntimeState) => Effect.Effect<RuntimeMutation<A>, E>,

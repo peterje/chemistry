@@ -61,7 +61,7 @@ On upgrade the server accepts the socket with the Hibernation API, stores a sche
 
 Socket attachments contain only parsed connection identity, session identity, protocol version, and last acknowledged stream cursor. Durable stream state never depends on an in-memory socket map. A hibernation wake decodes the attachment and reconstructs the forwarder on the first message.
 
-Malformed frames produce a typed `ProtocolError` and close only when continuing would be unsafe. A stale stream cursor gets an explicit reset/probe response; it never mutates durable state.
+Malformed frames produce a typed `ProtocolError` and close only when continuing would be unsafe. A resume cursor beyond the durable stream high-water mark fails with `RuntimeCursorError`, maps to a typed non-recoverable `stale-stream` frame, and never advances the replay gate. On the next probe the browser clamps its local cursor to the server high-water mark before acknowledging, so stale local state cannot filter future durable events.
 
 ## Durable stream state machine
 
@@ -109,11 +109,11 @@ RECOVERING -> FAILED          budget exhausted or unrecoverable
 PARKED -> QUEUED              a future feature supplies the awaited input
 ```
 
-An operation record stores operation/submission/stream IDs, prompt and safe request snapshot, status, checkpoint, generation, attempt, progress/work counters, lease expiry, timestamps, and optional terminal reason. The submission ID is the idempotency key: duplicate admission returns the existing operation and never creates a second user turn.
+An operation record stores operation/submission/stream IDs, operation kind, immutable input, a safe request snapshot, status, checkpoint, generation, attempt, progress/work counters, lease expiry, timestamps, a bounded phase-effect ledger, and optional terminal reason. The request snapshot captures the exact Workers AI model, tool-step limit, durable context, history IDs, and compaction IDs at the preparing checkpoint; fresh execution consumes that captured view rather than mutable later context. The submission ID is the idempotency key: duplicate admission returns the existing operation and never creates a second user turn.
 
-The durable FIFO contains operation IDs. Claiming the head and setting the active operation happen atomically. There is at most one active turn per session. A fresh owner increments the generation and writes a bounded lease. Every append/checkpoint/terminal mutation supplies that generation; stale owners receive a typed fence error. A lease is ownership fencing, not a correctness timer: a live producer renews it only after durable progress.
+The durable FIFO contains operation IDs. Claiming the head and setting the active operation happen atomically. There is at most one active turn per session. A fresh owner increments the generation and writes a bounded lease. Every phase, append, recovery-schedule, and terminal mutation supplies that generation and must still own an unexpired lease; stale or lease-expired owners receive a typed fence error. A live producer renews its bounded lease only after durable progress. Wake treats an expired or missing lease as orphaned even when the persisted owner boot equals the current isolate and clears ownership immediately, so an abandoned runner is fenced even if it later resumes before the recovery alarm.
 
-The existing model service uses deterministic message IDs derived from the operation for runtime-driven turns. Re-running `preparing` does not append a duplicate user message. Continuation persists the reconstructed partial under the operation's deterministic assistant identity before making a new model request.
+The existing model service uses deterministic message IDs derived from the operation for runtime-driven turns. Re-running `preparing` does not append a duplicate user message. Continuation persists the reconstructed partial under the operation's deterministic assistant identity before making a new model request. The generic phase ledger stores stable effect keys plus pending/completed/failed status for admission, request snapshot, transcript partial persistence, each inference generation, and terminalization. A pending entry may rerun at least once; a completed stable key is skipped. This records and governs rerunnable phases without claiming arbitrary external exactly-once behavior.
 
 ## Recovery incident state machine
 
@@ -135,12 +135,13 @@ Wake reconciliation runs before accepting a new turn. A nonterminal operation ow
 - `parked`: explicit parked checkpoint;
 - `unrecoverable`: corrupt snapshot, impossible transition, or terminal safety failure.
 
-A recovery incident retains one identity across wakes. The engine records attempts, no-progress baseline/time, work baseline/consumption, OOM/reset strikes, generation, last schedule time, and terminal reason. Defaults are finite and configurable at the composition root:
+A recovery incident retains one identity across wakes. The engine records attempts, no-progress baseline/time, work baseline/consumption, OOM/reset strikes, generation, last schedule time, and terminal reason. Recovery consumes work only when a persisted `Recover` alarm matches the incident operation, operation generation, and scheduled timestamp and is due. Early alarms preserve the pending intent; stale alarms transactionally consume it. Neither can claim a generation. The DO alarm path evaluates the stored intent before wake may rearm it, so stale delivery cannot be normalized into a valid claim. Readiness schedules recovery but does not bypass this durable debounce. Defaults are finite and configurable at the composition root:
 
 - maximum no-progress attempts: 5;
 - no-progress timeout: 2 minutes;
 - maximum recovery work units: 1,024;
 - maximum OOM/reset strikes: 3;
+- maximum phase-effect ledger entries: 32;
 - lease duration: 30 seconds;
 - alarm debounce: 1 second;
 - stable-state timeout: 30 seconds;
@@ -159,14 +160,14 @@ agent-session:<sessionId> -> StoredSession v1
 Runtime data is versioned separately:
 
 ```text
-agent-runtime:<sessionId> -> RuntimeStateV1
-runtime-alarm:<sessionId> -> next recovery/cleanup intent (inside RuntimeStateV1)
+agent-runtime:<sessionId> -> RuntimeStateV2
+runtime-alarm:<sessionId> -> next recovery/cleanup intent (inside RuntimeStateV2)
 ```
 
-`RuntimeStateV1` contains:
+`RuntimeStateV2` contains:
 
-- `version: 1`;
-- bounded operation records;
+- `version: 2`;
+- bounded operation records with kind, immutable input, captured request metadata/context/history, and phase-effect ledgers;
 - bounded FIFO operation IDs;
 - active operation ID or null;
 - bounded stream records and event arrays;
@@ -175,7 +176,7 @@ runtime-alarm:<sessionId> -> next recovery/cleanup intent (inside RuntimeStateV1
 - boot/wake metadata;
 - next alarm intent or null.
 
-Absence of `agent-runtime:*` is the migration from the existing release: construct an empty `RuntimeStateV1` without changing `agent-session:*`. Persisted runtime records are decoded with Effect Schema before application logic sees them. Unknown versions or malformed records fail as typed persistence/corruption errors; they are never silently reset.
+Absence of `agent-runtime:*` migrates the original chat-only release by constructing an empty `RuntimeStateV2` without changing `agent-session:*`. The first published runtime's `RuntimeStateV1` is explicitly decoded and migrated in place: prompts become typed inputs, queued/active identities and stream logs are preserved, and pending request-snapshot/phase-ledger records force a fresh preparing-phase capture before execution or continuation. Unknown versions or malformed records fail as typed persistence/corruption errors; they are never silently reset.
 
 ## Failure semantics
 
@@ -213,8 +214,8 @@ Every fetch, alarm, or WebSocket event enters the same readiness gate:
 
 1. decode/migrate runtime state;
 2. assign the current boot identity;
-3. classify stale active ownership;
-4. schedule or perform one bounded recovery pass;
+3. classify stale active ownership or an expired same-boot lease;
+4. persist a generation-fenced, timestamped alarm intent and perform recovery only when it is current and due;
 5. restore the FIFO coordinator;
 6. only then handle the external event.
 

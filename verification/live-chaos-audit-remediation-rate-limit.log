@@ -1,0 +1,85 @@
+$ RUN_LIVE_E2E=1 bun test test/live.e2e.test.ts
+bun test v1.3.14 (0d9b296a)
+
+test/live.e2e.test.ts:
+Plan: 2 to create
+[AgentBackend] create
+[AgentBackend/AI] create
+[AgentBackend/AgentSession] create
+[Website] create
+[Website/BACKEND] create
+
+[Website] pre-creating
+[AgentBackend] pre-creating
+[AgentBackend] fail
+[Website] fail
+405 | 
+406 |         // 3. Throttling — 429 or the global rate-limit message (Cloudflare
+407 |         // returns it inside envelopes with arbitrary HTTP status, often 200).
+408 |         if (status === 429 || GLOBAL_RATE_LIMIT_MESSAGE.test(errorMessage)) {
+409 |           return yield* fail(
+410 |             new TooManyRequests({
+                      ^
+error: Rate limited. Please wait and consider throttling your request speed
+       _tag: "TooManyRequests",
+ retryAfter: undefined,
+
+      at /Users/peteredm/.reference/alchemy-agent/node_modules/@distilled.cloud/cloudflare/src/protocol.ts:410:17
+      at ~effect/Effect/successCont (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:933:22)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:406:56)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:362:3)
+      at /Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:768:7
+      at processTicksAndRejections (native:7:39)
+(fail) (unnamed) [24597.76ms]
+Plan: 2 to delete
+[AgentBackend] delete
+[AgentBackend/AI] delete
+[AgentBackend/AgentSession] delete
+[Website] delete
+[Website/BACKEND] delete
+
+[Website] deleting
+[Website] fail
+[AgentBackend] Skipping delete — blocked by failed delete of Website.
+[AgentBackend] skipped
+2213 |   if (failures.length > 0) {
+2214 |     // Every independent delete was still attempted; now surface everything
+2215 |     // that went wrong (and everything skipped as a consequence) as one
+2216 |     // typed aggregate. The destroy as a whole still fails.
+2217 |     return yield* Effect.fail(
+2218 |       new DestroyError({ failures, blocked: blockedDeletes }),
+                 ^
+error: Failed to delete 1 resource(s) (1 more skipped because a dependent's delete failed):
+  ✗ Website (Cloudflare.Worker): TooManyRequests: Rate limited. Please wait and consider throttling your request speed
+    at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/@distilled.cloud/cloudflare/src/protocol.ts:410:17)
+    at Effect.fn (/Users/peteredm/.reference/alchemy-agent/node_modules/alchemy/src/Apply.ts:2011:20)
+    at Effect.fn (definition) (/Users/peteredm/.reference/alchemy-agent/node_modules/alchemy/src/Cloudflare/Workers/WorkerProvider.ts:4609:22)
+    at provider.read (/Users/peteredm/.reference/alchemy-agent/node_modules/alchemy/src/Apply.ts:130:14)
+    at Effect.fn (/Users/peteredm/.reference/alchemy-agent/node_modules/alchemy/src/Apply.ts:2198:12)
+    at Effect.fn (definition) (/Users/peteredm/.reference/alchemy-agent/node_modules/alchemy/src/Apply.ts:1783:30)
+    at Effect.fn (/Users/peteredm/.reference/alchemy-agent/node_modules/alchemy/src/Apply.ts:231:12)
+    at Effect.fn (definition) (/Users/peteredm/.reference/alchemy-agent/node_modules/alchemy/src/Apply.ts:1737:31)
+    at apply (/Users/peteredm/.reference/alchemy-agent/node_modules/alchemy/src/Apply.ts:296:12)
+  ⊘ AgentBackend (Cloudflare.Worker): skipped — blocked by failed delete of Website
+ failures: [
+  [Object ...]
+],
+  blocked: [
+  [Object ...]
+],
+     _tag: "DestroyError",
+
+      at /Users/peteredm/.reference/alchemy-agent/node_modules/alchemy/src/Apply.ts:2218:11
+      at ~effect/Effect/successCont (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:933:22)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:406:56)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:362:3)
+      at /Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:768:7
+      at /Users/peteredm/.reference/alchemy-agent/node_modules/@effect/platform-node-shared/dist/NodeFileSystem.js:338:7
+      at node:fs:225:13
+      at processTicksAndRejections (native:7:39)
+(fail) (unnamed) [24271.89ms]
+
+ 0 pass
+ 2 fail
+Ran 2 tests across 1 file. [49.68s]
+error: script "test:e2e" exited with code 1

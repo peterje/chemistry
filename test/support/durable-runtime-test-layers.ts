@@ -6,6 +6,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import {
+  AgentContext,
   BootId,
   ConnectionId,
   OperationId,
@@ -17,6 +18,7 @@ import {
   type SessionId,
 } from "../../src/shared/agent-protocol.ts";
 import { RuntimeIdSource } from "../../src/server/runtime-id-source.ts";
+import { RuntimeRequestSnapshot } from "../../src/server/runtime-state.ts";
 import {
   TurnExecutor,
   type PersistPartialInput,
@@ -83,6 +85,23 @@ export const TurnExecutorTestLayer = Layer.effectContext(
     const assistantIds = yield* Ref.make<ReadonlySet<string>>(new Set());
 
     const service = TurnExecutorTest.of({
+      captureRequest: (input) =>
+        Effect.succeed(
+          RuntimeRequestSnapshot.make({
+            version: 1,
+            provider: "cloudflare-workers-ai",
+            model: "test-model",
+            toolStepLimit: 5,
+            contextStrategy: "durable-session-at-phase-start",
+            context: AgentContext.make({
+              systemPrompt: "Test runtime system prompt.",
+              memory: "",
+            }),
+            historyMessageIds: [],
+            compactionIds: [],
+            submittedAt: input.submittedAt,
+          }),
+        ),
       execute: (input) =>
         Stream.unwrap(
           Effect.gen(function* () {

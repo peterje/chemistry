@@ -24,6 +24,7 @@ import { RuntimeStoreTest, RuntimeStoreTestLayer } from "./support/runtime-store
 const text = (delta: string) => AgentStreamEvent.cases.TextDelta.make({ delta });
 
 interface RuntimeTestOptions {
+  readonly alarmDebounceMs?: number;
   readonly maxRecoveryAttempts?: number;
   readonly maxRecoveryWork?: number;
   readonly maxStreamBytes?: number;
@@ -38,6 +39,7 @@ const makeTestLayer = (options: RuntimeTestOptions = {}) => {
   const turns = TurnExecutorTestLayer;
   const runtime = makeDurableExecutionLayer({
     ...defaultRuntimeLimits,
+    alarmDebounceMs: options.alarmDebounceMs ?? 0,
     maxRecoveryAttempts: options.maxRecoveryAttempts ?? defaultRuntimeLimits.maxRecoveryAttempts,
     maxRecoveryWork: options.maxRecoveryWork ?? defaultRuntimeLimits.maxRecoveryWork,
     maxStreamBytes: options.maxStreamBytes ?? defaultRuntimeLimits.maxStreamBytes,
@@ -67,6 +69,16 @@ describe("Effect-native durable execution", () => {
           "hello",
           SubmissionId.make("submission-stream"),
         );
+
+        expect(admission.operation.kind).toBe("agent-turn");
+        expect(admission.operation.input.prompt).toBe("hello");
+        expect(admission.operation.requestSnapshot.model).toBe("test-model");
+        expect(
+          admission.operation.effectLedger.map((entry) => [entry.phase, entry.status]),
+        ).toEqual([
+          ["request-snapshot", "completed"],
+          ["admission", "completed"],
+        ]);
 
         const emitted = yield* runtime.run(sessionId, admission.operation.operationId).pipe(
           Stream.mapEffect((event) =>
@@ -98,6 +110,26 @@ describe("Effect-native durable execution", () => {
         expect(replayAll.status).toBe("completed");
         const replayTail = yield* runtime.replay(sessionId, admission.operation.streamId, 0);
         expect(replayTail.events.map((event) => event.sequence)).toEqual([1]);
+        const staleCursor = yield* runtime
+          .replay(sessionId, admission.operation.streamId, 3)
+          .pipe(Effect.flip);
+        expect(staleCursor._tag).toBe("RuntimeCursorError");
+        const terminalState = yield* store.inspect(sessionId);
+        if (Option.isSome(terminalState)) {
+          const completed = terminalState.value.operations.find(
+            (operation) => operation.operationId === admission.operation.operationId,
+          );
+          expect(
+            completed?.effectLedger.some(
+              (entry) => entry.phase === "inference" && entry.status === "completed",
+            ),
+          ).toBe(true);
+          expect(
+            completed?.effectLedger.some(
+              (entry) => entry.phase === "terminal" && entry.status === "completed",
+            ),
+          ).toBe(true);
+        }
       }),
     ));
 
@@ -250,6 +282,50 @@ describe("Effect-native durable execution", () => {
       }),
     ));
 
+  test("recovers an expired same-boot lease and fences the abandoned runner", () =>
+    run(
+      Effect.gen(function* () {
+        const runtime = yield* DurableExecution;
+        const store = yield* RuntimeStoreTest;
+        const turns = yield* TurnExecutorTest;
+        const sessionId = SessionId.make("runtime-expired-same-boot");
+        const admission = yield* runtime.admit(
+          sessionId,
+          "expired",
+          SubmissionId.make("submission-expired-same-boot"),
+        );
+        yield* turns.setEvents([text("stale-runner-output")]);
+        yield* turns.pauseExecutions();
+        const abandoned = yield* runtime
+          .run(sessionId, admission.operation.operationId)
+          .pipe(Stream.runDrain, Effect.result, Effect.forkScoped);
+        yield* turns.nextExecution();
+        const claimed = yield* store.inspect(sessionId);
+        if (Option.isNone(claimed)) return;
+        yield* store.replace(
+          RuntimeState.make({
+            ...claimed.value,
+            operations: claimed.value.operations.map((operation) =>
+              operation.operationId === admission.operation.operationId
+                ? { ...operation, leaseExpiresAt: 0 }
+                : operation,
+            ),
+          }),
+        );
+        const wake = yield* runtime.wake(sessionId);
+        expect(wake.recoverableOperationId).toBe(admission.operation.operationId);
+        yield* turns.releaseExecution();
+        const outcome = yield* Fiber.join(abandoned);
+        expect(outcome._tag).toBe("Failure");
+        if (outcome._tag === "Failure") {
+          expect(outcome.failure._tag).toBe("RuntimeFenceError");
+        }
+        expect((yield* runtime.replay(sessionId, admission.operation.streamId, -1)).events).toEqual(
+          [],
+        );
+      }).pipe(Effect.scoped),
+    ));
+
   test("rehydrates an interrupted partial and continues under a new generation", () =>
     run(
       Effect.gen(function* () {
@@ -320,7 +396,97 @@ describe("Effect-native durable execution", () => {
         const executions = yield* turns.executions();
         expect(executions.at(-1)?.mode).toBe("continue");
         expect(executions.at(-1)?.operationId).toBe(operation.operationId);
+        const completed = yield* store.inspect(sessionId);
+        if (Option.isSome(completed)) {
+          const recoveredOperation = completed.value.operations.find(
+            (candidate) => candidate.operationId === operation.operationId,
+          );
+          expect(
+            recoveredOperation?.effectLedger.some(
+              (entry) => entry.phase === "transcript-partial" && entry.status === "completed",
+            ),
+          ).toBe(true);
+        }
       }),
+    ));
+
+  test("rejects early and stale recovery alarms before consuming a current due intent", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const runtime = yield* DurableExecution;
+        const turns = yield* TurnExecutorTest;
+        const store = yield* RuntimeStoreTest;
+        const sessionId = SessionId.make("runtime-alarm-fence");
+        yield* runtime.admit(sessionId, "alarm", SubmissionId.make("submission-alarm-fence"));
+        const before = yield* store.inspect(sessionId);
+        if (Option.isNone(before)) return;
+        const operation = before.value.operations[0];
+        if (operation === undefined) return;
+        yield* store.replace(
+          RuntimeState.make({
+            ...before.value,
+            bootId: BootId.make("alarm-old-boot"),
+            operations: [
+              {
+                ...operation,
+                status: "running",
+                checkpoint: "preparing",
+                generation: 1,
+                ownerBootId: BootId.make("alarm-old-boot"),
+                leaseExpiresAt: 0,
+              },
+            ],
+            queue: [],
+            activeOperationId: operation.operationId,
+          }),
+        );
+        const wake = yield* runtime.wake(sessionId);
+        expect(wake.recoveryAlarmAt).not.toBeNull();
+        yield* runtime.recover(sessionId).pipe(Stream.runDrain);
+        expect((yield* turns.executions()).length).toBe(0);
+
+        const scheduled = yield* store.inspect(sessionId);
+        if (Option.isNone(scheduled) || scheduled.value.alarm?._tag !== "Recover") return;
+        yield* store.replace(
+          RuntimeState.make({
+            ...scheduled.value,
+            alarm: {
+              ...scheduled.value.alarm,
+              generation: scheduled.value.alarm.generation + 1,
+              scheduledAt: 0,
+            },
+            recovery:
+              scheduled.value.recovery === null
+                ? null
+                : { ...scheduled.value.recovery, scheduledAt: 0 },
+          }),
+        );
+        yield* runtime.recover(sessionId).pipe(Stream.runDrain);
+        expect((yield* turns.executions()).length).toBe(0);
+
+        const stale = yield* store.inspect(sessionId);
+        if (Option.isNone(stale) || stale.value.recovery === null) return;
+        expect(stale.value.alarm).toBeNull();
+        const current = stale.value.operations.find(
+          (candidate) => candidate.operationId === operation.operationId,
+        );
+        if (current === undefined) return;
+        yield* store.replace(
+          RuntimeState.make({
+            ...stale.value,
+            alarm: {
+              _tag: "Recover",
+              operationId: operation.operationId,
+              generation: current.generation,
+              scheduledAt: 0,
+            },
+            recovery: { ...stale.value.recovery, scheduledAt: 0 },
+          }),
+        );
+        yield* turns.setEvents([text("retried")]);
+        yield* runtime.recover(sessionId).pipe(Stream.runDrain);
+        expect((yield* turns.executions()).length).toBe(1);
+      }).pipe(Effect.provide(makeTestLayer({ alarmDebounceMs: 60_000 }))),
     ));
 
   test("converges the transcript-before-runtime-terminal crash window without re-inference", () =>

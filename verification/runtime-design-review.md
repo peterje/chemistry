@@ -26,8 +26,11 @@ Reference surfaces inspected:
 - [x] All queue/stream/frame/replay/recovery/alarm/retention paths have finite defaults or explicit policies.
 - [x] The separate transcript and runtime adapters avoid stale model snapshots overwriting stream state.
 - [x] Provider calls remain outside transactions; the transcript/runtime terminal crash window has deterministic convergence instead of a false atomicity claim.
-- [x] Existing sessions migrate by absence of a versioned runtime record; malformed/unknown versions fail visibly.
+- [x] Chat-only sessions migrate by absent runtime state; published v1 operations/queues/streams migrate explicitly to v2 snapshots and ledgers; malformed/unknown versions fail visibly.
 - [x] RPC remains the control/snapshot interface while WebSocket becomes the live interface.
+- [x] Above-high-water replay cursors close without advancing the gate; same-boot ownership is bounded by lease expiry.
+- [x] Alarm claims require a due operation/generation/timestamp match; early intent is preserved and stale intent is consumed before wake rearms.
+- [x] Operation kind, immutable input, consumed request snapshot, and bounded stable phase-effect keys are durable.
 - [x] Scheduled tasks, subagents, detached work, and HITL remain feature-level non-goals.
 
 ## Adapter/module review

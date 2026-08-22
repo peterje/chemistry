@@ -77,6 +77,28 @@ describe("resumable browser runtime reducer", () => {
     });
   });
 
+  test("clamps a stale local cursor to the durable probe high-water mark", () => {
+    const transition = applyRuntimeServerFrame(
+      {
+        ...initialRuntimeSocketSnapshot(),
+        streamId,
+        lastSequence: 99,
+        recentEvents: [event(7, "stale")],
+      },
+      RuntimeServerFrame.cases.ResumeProbe.make({
+        probeId: "probe-clamp",
+        connectionId: ConnectionId.make("connection-clamp"),
+        sessionId: SessionId.make("client-clamp"),
+        activeStreamId: streamId,
+        latestSequence: 6,
+        runtime,
+      }),
+    );
+    expect(transition.snapshot.lastSequence).toBe(6);
+    expect(transition.snapshot.recentEvents).toEqual([]);
+    expect(transition.outbound[0]).toMatchObject({ afterSequence: 6 });
+  });
+
   test("deduplicates overlap and reconnects rather than accepting a gap", () => {
     const accepted = applyRuntimeServerFrame(
       { ...initialRuntimeSocketSnapshot(), streamId },

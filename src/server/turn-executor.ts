@@ -10,8 +10,19 @@ import type {
   StreamId,
   SubmissionId,
 } from "../shared/agent-protocol.ts";
+import type { RuntimeRequestSnapshot } from "./runtime-state.ts";
 
 /** Input for one fresh or transcript-continuation model turn. */
+/** Input used to capture immutable request metadata before durable admission. */
+export interface CaptureTurnRequestInput {
+  /** Durable session selected by the caller. */
+  readonly sessionId: SessionId;
+  /** Original bounded user prompt. */
+  readonly prompt: string;
+  /** Admission timestamp stored with the request snapshot. */
+  readonly submittedAt: number;
+}
+
 export interface TurnExecutionInput {
   /** Durable session that owns the turn. */
   readonly sessionId: SessionId;
@@ -23,6 +34,8 @@ export interface TurnExecutionInput {
   readonly streamId: StreamId;
   /** Original user prompt. */
   readonly prompt: string;
+  /** Immutable request metadata captured before admission. */
+  readonly requestSnapshot: RuntimeRequestSnapshot;
   /** Deterministic transcript identity for the user message. */
   readonly userMessageId: MessageId;
   /** Deterministic transcript identity for recovered assistant content. */
@@ -43,6 +56,10 @@ export interface PersistPartialInput {
 
 /** Model-facing turn capability required by durable execution. */
 export interface TurnExecutorOperations {
+  /** Capture immutable provider/tool/context policy metadata before admission. */
+  readonly captureRequest: (
+    input: CaptureTurnRequestInput,
+  ) => Effect.Effect<RuntimeRequestSnapshot, AgentRpcError>;
   /** Execute one fresh or continuation model turn as typed domain events. */
   readonly execute: (input: TurnExecutionInput) => Stream.Stream<AgentStreamEvent, AgentRpcError>;
   /** Idempotently persist a reconstructed partial assistant message. */

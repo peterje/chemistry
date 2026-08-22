@@ -393,6 +393,27 @@ if (!live) {
         expect(protocolFailure.recoverable).toBe(false);
       }
 
+      const staleCursor = yield* connectRuntime(runtimeUrl(backendUrl, sessionId));
+      const staleProbe = yield* nextRuntimeFrame(staleCursor);
+      if (staleProbe._tag !== "ResumeProbe") {
+        return yield* new LiveSocketFailure({ message: "No resume probe for stale cursor test" });
+      }
+      yield* sendRuntimeFrame(
+        staleCursor,
+        RuntimeClientFrame.cases.ResumeAck.make({
+          probeId: staleProbe.probeId,
+          streamId: accepted.streamId,
+          afterSequence: staleProbe.latestSequence + 1,
+        }),
+      );
+      const staleFailure = yield* nextRuntimeFrame(staleCursor);
+      expect(staleFailure._tag).toBe("ProtocolError");
+      if (staleFailure._tag === "ProtocolError") {
+        expect(staleFailure.code).toBe("stale-stream");
+        expect(staleFailure.recoverable).toBe(false);
+      }
+      yield* closeRuntime(staleCursor);
+
       const otherSession = SessionId.make(`live-route-${crypto.randomUUID()}`);
       const routed = yield* resumeEventually(backendUrl, otherSession, -1);
       expect(routed.probe.sessionId).toBe(otherSession);

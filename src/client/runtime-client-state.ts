@@ -76,7 +76,9 @@ export const applyRuntimeServerFrame = (
     case "ResumeProbe": {
       const streamId = frame.activeStreamId;
       const afterSequence =
-        streamId !== null && current.streamId === streamId ? current.lastSequence : -1;
+        streamId !== null && current.streamId === streamId
+          ? Math.min(current.lastSequence, frame.latestSequence)
+          : -1;
       return {
         snapshot: {
           ...current,
@@ -88,6 +90,12 @@ export const applyRuntimeServerFrame = (
           recoveryAttempt: frame.runtime.recoveryAttempt,
           terminalReason: frame.runtime.lastTerminalReason,
           error: null,
+          recentEvents:
+            streamId !== null && current.streamId === streamId
+              ? current.recentEvents.filter(
+                  (event) => event.streamId === streamId && event.sequence <= afterSequence,
+                )
+              : [],
         },
         outbound: [
           RuntimeClientFrame.cases.ResumeAck.make({

@@ -272,11 +272,18 @@ const buildRuntimeWebSocketAdapter = Effect.fn("RuntimeWebSocketAdapter.make")(f
         : beginReplayHandoff(selectedStreamId, frame.afterSequence);
     gate.highWater = frame.afterSequence;
     replayGates.set(attachment.connectionId, gate);
-    const replay = yield* runtime.replay(
-      attachment.sessionId,
-      selectedStreamId,
-      frame.afterSequence,
-    );
+    const replayResult = yield* runtime
+      .replay(attachment.sessionId, selectedStreamId, frame.afterSequence)
+      .pipe(Effect.result);
+    if (Result.isFailure(replayResult)) {
+      replayGates.delete(attachment.connectionId);
+      if (replayResult.failure._tag === "RuntimeCursorError") {
+        yield* protocolError(socket, "stale-stream", replayResult.failure.message, false);
+        return;
+      }
+      return yield* replayResult.failure;
+    }
+    const replay = replayResult.success;
     for (const durableEvent of acceptReplayBacklog(gate, replay.events)) {
       yield* sendDurableEvent(socket, durableEvent, true);
     }
@@ -540,9 +547,7 @@ const buildRuntimeWebSocketAdapter = Effect.fn("RuntimeWebSocketAdapter.make")(f
     if (wake.recoveryAlarmAt !== null) {
       yield* state.storage.setAlarm(wake.recoveryAlarmAt);
     }
-    if (wake.runnableOperationId !== null && wake.runnableStreamId !== null) {
-      yield* state.storage.setAlarm((yield* Clock.currentTimeMillis) + 1);
-    }
+    return wake;
   });
 
   return {

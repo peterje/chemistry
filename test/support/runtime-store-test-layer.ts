@@ -19,8 +19,8 @@ export interface RuntimeStoreTestOperations extends RuntimeStoreOperations {
   readonly inspect: (sessionId: SessionId) => Effect.Effect<Option.Option<RuntimeState>>;
   /** Replace one session state to inject a deterministic wake or crash fixture. */
   readonly replace: (state: RuntimeState) => Effect.Effect<void>;
-  /** Inject one store failure immediately before or after the next transaction commit. */
-  readonly failNextTransaction: (position: "before" | "after") => Effect.Effect<void>;
+  /** Inject one failure at the next matching named transaction. */
+  readonly failOperation: (operation: string, position: "before" | "after") => Effect.Effect<void>;
 }
 
 /** Test-only service backed by the same object as {@link RuntimeStore}. */
@@ -34,7 +34,12 @@ export const RuntimeStoreTestLayer = Layer.effectContext(
   Effect.gen(function* () {
     const states = yield* Ref.make<ReadonlyMap<string, RuntimeState>>(new Map());
     const semaphore = yield* Semaphore.make(1);
-    const nextFailure = yield* Ref.make<Option.Option<"before" | "after">>(Option.none());
+    const nextFailure = yield* Ref.make<
+      Option.Option<{
+        readonly operation: string;
+        readonly position: "before" | "after";
+      }>
+    >(Option.none());
 
     const load = Effect.fn("RuntimeStore.Test.load")(function* (
       sessionId: SessionId,
@@ -54,16 +59,22 @@ export const RuntimeStoreTestLayer = Layer.effectContext(
     });
 
     const transact = <A, E>(
+      operation: string,
       sessionId: SessionId,
       initial: RuntimeState,
       mutation: (runtime: RuntimeState) => Effect.Effect<RuntimeMutation<A>, E>,
     ): Effect.Effect<A, E | RuntimePersistenceError> =>
       semaphore.withPermits(1)(
         Effect.gen(function* () {
-          const failure = yield* Ref.getAndSet(nextFailure, Option.none());
-          if (Option.isSome(failure) && failure.value === "before") {
+          const configuredFailure = yield* Ref.get(nextFailure);
+          const failure =
+            Option.isSome(configuredFailure) && configuredFailure.value.operation === operation
+              ? configuredFailure
+              : Option.none();
+          if (Option.isSome(failure)) yield* Ref.set(nextFailure, Option.none());
+          if (Option.isSome(failure) && failure.value.position === "before") {
             return yield* new RuntimePersistenceError({
-              operation: "fault-before-commit",
+              operation: `${operation}:fault-before-commit`,
               message: "Injected failure before runtime transaction commit",
             });
           }
@@ -72,9 +83,9 @@ export const RuntimeStoreTestLayer = Layer.effectContext(
           const next = new Map(current);
           next.set(sessionId, changed.state);
           yield* Ref.set(states, next);
-          if (Option.isSome(failure) && failure.value === "after") {
+          if (Option.isSome(failure) && failure.value.position === "after") {
             return yield* new RuntimePersistenceError({
-              operation: "fault-after-commit",
+              operation: `${operation}:fault-after-commit`,
               message: "Injected failure after runtime transaction commit",
             });
           }
@@ -95,8 +106,8 @@ export const RuntimeStoreTestLayer = Layer.effectContext(
           return next;
         });
       }),
-      failNextTransaction: Effect.fn("RuntimeStore.Test.failNextTransaction")(function* (position) {
-        yield* Ref.set(nextFailure, Option.some(position));
+      failOperation: Effect.fn("RuntimeStore.Test.failOperation")(function* (operation, position) {
+        yield* Ref.set(nextFailure, Option.some({ operation, position }));
       }),
     });
 

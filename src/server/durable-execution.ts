@@ -20,7 +20,9 @@ import {
 import { RuntimeIdSource } from "./runtime-id-source.ts";
 import {
   RecoveryIncident,
+  RuntimeOperationInput,
   RuntimeOperationRecord,
+  RuntimePhaseEffect,
   RuntimeStreamRecord,
   defaultRuntimeLimits,
   findRuntimeOperation,
@@ -29,11 +31,14 @@ import {
   type RecoveryKind,
   type RuntimeLimits,
   type RuntimeOperationRecord as RuntimeOperationRecordType,
+  type RuntimePhase,
+  type RuntimePhaseEffect as RuntimePhaseEffectType,
   type RuntimeState as RuntimeStateType,
   type RuntimeStreamRecord as RuntimeStreamRecordType,
 } from "./runtime-state.ts";
 import {
   RuntimeCapacityError,
+  RuntimeCursorError,
   RuntimeFenceError,
   RuntimePersistenceError,
   RuntimeStore,
@@ -45,6 +50,7 @@ import { TurnExecutor, type TurnExecutionInput } from "./turn-executor.ts";
 export type DurableExecutionError =
   | AgentRpcError
   | RuntimeCapacityError
+  | RuntimeCursorError
   | RuntimeFenceError
   | RuntimePersistenceError
   | RuntimeTransitionError;
@@ -108,6 +114,10 @@ type ClaimResult =
     };
 
 type RecoveryPreparation =
+  | {
+      readonly _tag: "Noop";
+      readonly operation: RuntimeOperationRecordType | null;
+    }
   | {
       readonly _tag: "Exhausted";
       readonly operation: RuntimeOperationRecordType;
@@ -249,11 +259,46 @@ const toTurnInput = (
   operationId: operation.operationId,
   submissionId: operation.submissionId,
   streamId: operation.streamId,
-  prompt: operation.prompt,
+  prompt: operation.input.prompt,
+  requestSnapshot: operation.requestSnapshot,
   userMessageId: operation.userMessageId,
   assistantMessageId: operation.assistantMessageId,
   mode,
 });
+
+const upsertPhaseEffect = (
+  operation: RuntimeOperationRecordType,
+  entry: RuntimePhaseEffectType,
+  limit: number,
+): RuntimeOperationRecordType | undefined => {
+  const index = operation.effectLedger.findIndex(
+    (candidate) => candidate.effectKey === entry.effectKey,
+  );
+  if (index < 0 && operation.effectLedger.length >= limit) return undefined;
+  const effectLedger =
+    index < 0
+      ? [...operation.effectLedger, entry]
+      : operation.effectLedger.map((candidate) =>
+          candidate.effectKey === entry.effectKey ? entry : candidate,
+        );
+  return { ...operation, effectLedger };
+};
+
+const phaseEffectKey = (
+  operationId: OperationId,
+  phase: RuntimePhase,
+  generation: number,
+): string => `${operationId}:${phase}:${generation}`;
+
+const ownsUnexpiredLease = (
+  current: RuntimeOperationRecordType,
+  claimed: RuntimeOperationRecordType,
+  now: number,
+): boolean =>
+  current.ownerBootId !== null &&
+  current.ownerBootId === claimed.ownerBootId &&
+  current.leaseExpiresAt !== null &&
+  current.leaseExpiresAt > now;
 
 const errorMessage = (error: DurableExecutionError): string => error.message;
 
@@ -307,7 +352,13 @@ export const makeDurableExecutionLayer = (
         const streamId = yield* ids.stream();
         const userMessageId = MessageId.make(`${operationId}:user`);
         const assistantMessageId = MessageId.make(`${operationId}:assistant`);
+        const requestSnapshot = yield* executor.captureRequest({
+          sessionId,
+          prompt,
+          submittedAt: now,
+        });
         return yield* store.transact<RuntimeAdmission, RuntimeCapacityError>(
+          "admit",
           sessionId,
           initial(sessionId, now),
           Effect.fn("DurableExecution.admit.transition")(function* (state) {
@@ -335,7 +386,27 @@ export const makeDurableExecutionLayer = (
               operationId,
               submissionId,
               streamId,
-              prompt,
+              kind: "agent-turn",
+              input: RuntimeOperationInput.make({ prompt }),
+              requestSnapshot,
+              effectLedger: [
+                RuntimePhaseEffect.make({
+                  effectKey: phaseEffectKey(operationId, "request-snapshot", 0),
+                  phase: "request-snapshot",
+                  status: "completed",
+                  generation: 0,
+                  attempt: 0,
+                  updatedAt: now,
+                }),
+                RuntimePhaseEffect.make({
+                  effectKey: phaseEffectKey(operationId, "admission", 0),
+                  phase: "admission",
+                  status: "completed",
+                  generation: 0,
+                  attempt: 0,
+                  updatedAt: now,
+                }),
+              ],
               userMessageId,
               assistantMessageId,
               status: "queued",
@@ -387,6 +458,7 @@ export const makeDurableExecutionLayer = (
       ) {
         const now = yield* Clock.currentTimeMillis;
         return yield* store.transact<ClaimResult, RuntimeTransitionError>(
+          "claim",
           sessionId,
           initial(sessionId, now),
           Effect.fn("DurableExecution.claim.transition")(function* (state) {
@@ -435,12 +507,78 @@ export const makeDurableExecutionLayer = (
         );
       });
 
+      const persistRequestSnapshot = Effect.fn("DurableExecution.persistRequestSnapshot")(
+        function* (sessionId: SessionId, operation: RuntimeOperationRecordType) {
+          const now = yield* Clock.currentTimeMillis;
+          const requestSnapshot = yield* executor.captureRequest({
+            sessionId,
+            prompt: operation.input.prompt,
+            submittedAt: operation.requestSnapshot.submittedAt,
+          });
+          return yield* store.transact(
+            "persist-request-snapshot",
+            sessionId,
+            initial(sessionId, now),
+            Effect.fn("DurableExecution.persistRequestSnapshot.transition")(function* (state) {
+              const current = findRuntimeOperation(state, operation.operationId);
+              if (current === undefined) {
+                return yield* transitionError("persist-request-snapshot", "Operation disappeared");
+              }
+              if (
+                current.generation !== operation.generation ||
+                !ownsUnexpiredLease(current, operation, now)
+              ) {
+                return yield* new RuntimeFenceError({
+                  operationId: operation.operationId,
+                  expectedGeneration: current.generation,
+                  receivedGeneration: operation.generation,
+                  message: "Stale or lease-expired owner cannot persist a request snapshot",
+                });
+              }
+              const updated = upsertPhaseEffect(
+                {
+                  ...current,
+                  requestSnapshot,
+                  checkpoint: "preparing",
+                  updatedAt: now,
+                },
+                RuntimePhaseEffect.make({
+                  effectKey: phaseEffectKey(
+                    current.operationId,
+                    "request-snapshot",
+                    current.generation,
+                  ),
+                  phase: "request-snapshot",
+                  status: "completed",
+                  generation: current.generation,
+                  attempt: current.attempt,
+                  updatedAt: now,
+                }),
+                limits.maxPhaseEffects,
+              );
+              if (updated === undefined) {
+                return yield* new RuntimeCapacityError({
+                  resource: "phase-effect-ledger",
+                  limit: limits.maxPhaseEffects,
+                  message: `Phase effect ledger is limited to ${limits.maxPhaseEffects} entries`,
+                });
+              }
+              return {
+                state: { ...state, operations: replaceOperation(state, updated) },
+                value: updated,
+              };
+            }),
+          );
+        },
+      );
+
       const markStreaming = Effect.fn("DurableExecution.markStreaming")(function* (
         sessionId: SessionId,
         operation: RuntimeOperationRecordType,
       ) {
         const now = yield* Clock.currentTimeMillis;
         return yield* store.transact(
+          "mark-streaming",
           sessionId,
           initial(sessionId, now),
           Effect.fn("DurableExecution.markStreaming.transition")(function* (state) {
@@ -448,21 +586,47 @@ export const makeDurableExecutionLayer = (
             if (current === undefined) {
               return yield* transitionError("mark-streaming", "Operation disappeared");
             }
-            if (current.generation !== operation.generation) {
+            if (
+              current.generation !== operation.generation ||
+              !ownsUnexpiredLease(current, operation, now)
+            ) {
               return yield* new RuntimeFenceError({
                 operationId: operation.operationId,
                 expectedGeneration: current.generation,
                 receivedGeneration: operation.generation,
-                message: "Stale owner cannot begin streaming",
+                message: "Stale or lease-expired owner cannot begin streaming",
               });
             }
-            const updated: RuntimeOperationRecordType = {
-              ...current,
-              status: "running",
-              checkpoint: "streaming",
-              updatedAt: now,
-              leaseExpiresAt: now + limits.leaseDurationMs,
-            };
+            const inferenceKey = phaseEffectKey(
+              current.operationId,
+              "inference",
+              current.generation,
+            );
+            const updated = upsertPhaseEffect(
+              {
+                ...current,
+                status: "running",
+                checkpoint: "streaming",
+                updatedAt: now,
+                leaseExpiresAt: now + limits.leaseDurationMs,
+              },
+              RuntimePhaseEffect.make({
+                effectKey: inferenceKey,
+                phase: "inference",
+                status: "pending",
+                generation: current.generation,
+                attempt: current.attempt,
+                updatedAt: now,
+              }),
+              limits.maxPhaseEffects,
+            );
+            if (updated === undefined) {
+              return yield* new RuntimeCapacityError({
+                resource: "phase-effect-ledger",
+                limit: limits.maxPhaseEffects,
+                message: `Phase effect ledger is limited to ${limits.maxPhaseEffects} entries`,
+              });
+            }
             return {
               state: { ...state, operations: replaceOperation(state, updated) },
               value: updated,
@@ -478,6 +642,7 @@ export const makeDurableExecutionLayer = (
       ) {
         const now = yield* Clock.currentTimeMillis;
         return yield* store.transact(
+          "append",
           sessionId,
           initial(sessionId, now),
           Effect.fn("DurableExecution.append.transition")(function* (state) {
@@ -486,12 +651,15 @@ export const makeDurableExecutionLayer = (
             if (current === undefined || stream === undefined) {
               return yield* transitionError("append", "Operation or stream disappeared");
             }
-            if (current.generation !== operation.generation) {
+            if (
+              current.generation !== operation.generation ||
+              !ownsUnexpiredLease(current, operation, now)
+            ) {
               return yield* new RuntimeFenceError({
                 operationId: operation.operationId,
                 expectedGeneration: current.generation,
                 receivedGeneration: operation.generation,
-                message: "Stale owner cannot append a stream event",
+                message: "Stale or lease-expired owner cannot append a stream event",
               });
             }
             if (stream.events.length >= limits.maxEventsPerStream) {
@@ -578,6 +746,7 @@ export const makeDurableExecutionLayer = (
       ) {
         const now = yield* Clock.currentTimeMillis;
         return yield* store.transact(
+          "settle",
           sessionId,
           initial(sessionId, now),
           Effect.fn("DurableExecution.settle.transition")(function* (state) {
@@ -607,23 +776,63 @@ export const makeDurableExecutionLayer = (
                 } satisfies RuntimeTerminal,
               };
             }
-            if (current.generation !== operation.generation) {
+            if (
+              current.generation !== operation.generation ||
+              !ownsUnexpiredLease(current, operation, now)
+            ) {
               return yield* new RuntimeFenceError({
                 operationId: operation.operationId,
                 expectedGeneration: current.generation,
                 receivedGeneration: operation.generation,
-                message: "Stale owner cannot terminalize an operation",
+                message: "Stale or lease-expired owner cannot terminalize an operation",
               });
             }
-            const updatedOperation: RuntimeOperationRecordType = {
-              ...current,
-              status: outcome,
-              checkpoint: "terminal",
-              leaseExpiresAt: null,
-              ownerBootId: null,
-              terminalReason: reason,
-              updatedAt: now,
-            };
+            const inferenceCompleted = upsertPhaseEffect(
+              {
+                ...current,
+                status: outcome,
+                checkpoint: "terminal",
+                leaseExpiresAt: null,
+                ownerBootId: null,
+                terminalReason: reason,
+                updatedAt: now,
+              },
+              RuntimePhaseEffect.make({
+                effectKey: phaseEffectKey(current.operationId, "inference", current.generation),
+                phase: "inference",
+                status: outcome === "completed" ? "completed" : "failed",
+                generation: current.generation,
+                attempt: current.attempt,
+                updatedAt: now,
+              }),
+              limits.maxPhaseEffects,
+            );
+            const updatedOperation =
+              inferenceCompleted === undefined
+                ? undefined
+                : upsertPhaseEffect(
+                    inferenceCompleted,
+                    RuntimePhaseEffect.make({
+                      effectKey: phaseEffectKey(
+                        current.operationId,
+                        "terminal",
+                        current.generation,
+                      ),
+                      phase: "terminal",
+                      status: "completed",
+                      generation: current.generation,
+                      attempt: current.attempt,
+                      updatedAt: now,
+                    }),
+                    limits.maxPhaseEffects,
+                  );
+            if (updatedOperation === undefined) {
+              return yield* new RuntimeCapacityError({
+                resource: "phase-effect-ledger",
+                limit: limits.maxPhaseEffects,
+                message: `Phase effect ledger is limited to ${limits.maxPhaseEffects} entries`,
+              });
+            }
             const updatedStream: RuntimeStreamRecordType = {
               ...stream,
               status: outcome,
@@ -669,6 +878,7 @@ export const makeDurableExecutionLayer = (
         const now = yield* Clock.currentTimeMillis;
         const incidentId = yield* ids.incident();
         return yield* store.transact(
+          "schedule-recovery",
           sessionId,
           initial(sessionId, now),
           Effect.fn("DurableExecution.scheduleRecoveryAfterFailure.transition")(function* (state) {
@@ -677,12 +887,15 @@ export const makeDurableExecutionLayer = (
             if (current === undefined || stream === undefined) {
               return yield* transitionError("schedule-recovery", "Operation or stream disappeared");
             }
-            if (current.generation !== operation.generation) {
+            if (
+              current.generation !== operation.generation ||
+              !ownsUnexpiredLease(current, operation, now)
+            ) {
               return yield* new RuntimeFenceError({
                 operationId: operation.operationId,
                 expectedGeneration: current.generation,
                 receivedGeneration: operation.generation,
-                message: "Stale owner cannot schedule recovery",
+                message: "Stale or lease-expired owner cannot schedule recovery",
               });
             }
             const scheduledAt = now + limits.alarmDebounceMs;
@@ -703,15 +916,33 @@ export const makeDurableExecutionLayer = (
               scheduledAt,
               terminalReason: null,
             });
-            const interrupted: RuntimeOperationRecordType = {
-              ...current,
-              status: "interrupted",
-              checkpoint: recoveredPartial ? "partial-persisted" : current.checkpoint,
-              ownerBootId: null,
-              leaseExpiresAt: null,
-              updatedAt: now,
-              terminalReason: error.message,
-            };
+            const interrupted = upsertPhaseEffect(
+              {
+                ...current,
+                status: "interrupted",
+                checkpoint: recoveredPartial ? "partial-persisted" : current.checkpoint,
+                ownerBootId: null,
+                leaseExpiresAt: null,
+                updatedAt: now,
+                terminalReason: error.message,
+              },
+              RuntimePhaseEffect.make({
+                effectKey: phaseEffectKey(current.operationId, "inference", current.generation),
+                phase: "inference",
+                status: "failed",
+                generation: current.generation,
+                attempt: current.attempt,
+                updatedAt: now,
+              }),
+              limits.maxPhaseEffects,
+            );
+            if (interrupted === undefined) {
+              return yield* new RuntimeCapacityError({
+                resource: "phase-effect-ledger",
+                limit: limits.maxPhaseEffects,
+                message: `Phase effect ledger is limited to ${limits.maxPhaseEffects} entries`,
+              });
+            }
             const interruptedStream: RuntimeStreamRecordType = {
               ...stream,
               status: "interrupted",
@@ -750,6 +981,14 @@ export const makeDurableExecutionLayer = (
         const stream = findStream(state, streamId);
         if (stream === undefined) {
           return yield* transitionError("replay", `Stream ${streamId} is not retained`);
+        }
+        if (afterSequence > stream.latestSequence) {
+          return yield* new RuntimeCursorError({
+            streamId,
+            requestedSequence: afterSequence,
+            latestSequence: stream.latestSequence,
+            message: `Replay cursor ${afterSequence} exceeds durable sequence ${stream.latestSequence}`,
+          });
         }
         return {
           streamId,
@@ -827,7 +1066,7 @@ export const makeDurableExecutionLayer = (
               Stream.mapEffect((event) => append(sessionId, streaming, event)),
               Stream.onEnd(settle(sessionId, streaming, "completed", null)),
               Stream.catchIf(
-                (_error): _error is DurableExecutionError => true,
+                () => true,
                 (error) => {
                   const recoverable =
                     streaming.attempt > 0 || isInferenceStall(error) || isMemoryLimitReset(error);
@@ -865,7 +1104,14 @@ export const makeDurableExecutionLayer = (
                   ),
                 );
               }
-              return executeClaimed(sessionId, result.operation, mode);
+              if (mode === "continue") {
+                return executeClaimed(sessionId, result.operation, mode);
+              }
+              return Stream.unwrap(
+                persistRequestSnapshot(sessionId, result.operation).pipe(
+                  Effect.map((prepared) => executeClaimed(sessionId, prepared, mode)),
+                ),
+              );
             }),
           ),
         );
@@ -886,6 +1132,7 @@ export const makeDurableExecutionLayer = (
         const now = yield* Clock.currentTimeMillis;
         const incidentId = yield* ids.incident();
         return yield* store.transact<RuntimeWakeResult, RuntimeTransitionError>(
+          "wake",
           sessionId,
           initial(sessionId, now),
           Effect.fn("DurableExecution.wake.transition")(function* (state) {
@@ -918,7 +1165,9 @@ export const makeDurableExecutionLayer = (
             if (stream === undefined) {
               return yield* transitionError("wake", "Active stream record is missing");
             }
-            if (operation.ownerBootId === bootId) {
+            const leaseExpired =
+              operation.leaseExpiresAt === null || operation.leaseExpiresAt <= now;
+            if (operation.ownerBootId === bootId && !leaseExpired) {
               const sameBoot: RuntimeStateType = { ...state, lastWakeAt: now };
               return {
                 state: sameBoot,
@@ -1086,6 +1335,7 @@ export const makeDurableExecutionLayer = (
             return false;
           }
           return yield* store.transact(
+            "reconcile-terminal",
             sessionId,
             initial(sessionId, now),
             Effect.fn("DurableExecution.reconcileTranscriptTerminal.transition")(
@@ -1102,16 +1352,34 @@ export const makeDurableExecutionLayer = (
                   return { state: currentState, value: true };
                 }
                 const generation = currentState.generation + 1;
-                const completedOperation: RuntimeOperationRecordType = {
-                  ...current,
-                  status: "completed",
-                  checkpoint: "terminal",
-                  generation,
-                  ownerBootId: null,
-                  leaseExpiresAt: null,
-                  terminalReason: null,
-                  updatedAt: now,
-                };
+                const completedOperation = upsertPhaseEffect(
+                  {
+                    ...current,
+                    status: "completed",
+                    checkpoint: "terminal",
+                    generation,
+                    ownerBootId: null,
+                    leaseExpiresAt: null,
+                    terminalReason: null,
+                    updatedAt: now,
+                  },
+                  RuntimePhaseEffect.make({
+                    effectKey: phaseEffectKey(current.operationId, "terminal", generation),
+                    phase: "terminal",
+                    status: "completed",
+                    generation,
+                    attempt: current.attempt,
+                    updatedAt: now,
+                  }),
+                  limits.maxPhaseEffects,
+                );
+                if (completedOperation === undefined) {
+                  return yield* new RuntimeCapacityError({
+                    resource: "phase-effect-ledger",
+                    limit: limits.maxPhaseEffects,
+                    message: `Phase effect ledger is limited to ${limits.maxPhaseEffects} entries`,
+                  });
+                }
                 const completedStream: RuntimeStreamRecordType = {
                   ...currentStream,
                   status: "completed",
@@ -1137,17 +1405,136 @@ export const makeDurableExecutionLayer = (
         },
       );
 
+      const beginPhaseEffect = Effect.fn("DurableExecution.beginPhaseEffect")(function* (
+        sessionId: SessionId,
+        operation: RuntimeOperationRecordType,
+        phase: RuntimePhase,
+        effectKey: string,
+      ) {
+        const now = yield* Clock.currentTimeMillis;
+        return yield* store.transact(
+          "begin-phase-effect",
+          sessionId,
+          initial(sessionId, now),
+          Effect.fn("DurableExecution.beginPhaseEffect.transition")(function* (state) {
+            const current = findRuntimeOperation(state, operation.operationId);
+            if (current === undefined) {
+              return yield* transitionError("begin-phase-effect", "Operation disappeared");
+            }
+            if (
+              current.generation !== operation.generation ||
+              !ownsUnexpiredLease(current, operation, now)
+            ) {
+              return yield* new RuntimeFenceError({
+                operationId: operation.operationId,
+                expectedGeneration: current.generation,
+                receivedGeneration: operation.generation,
+                message: "Stale or lease-expired owner cannot begin a phase effect",
+              });
+            }
+            const existing = current.effectLedger.find((entry) => entry.effectKey === effectKey);
+            if (existing?.status === "completed") {
+              return { state, value: false };
+            }
+            const updated = upsertPhaseEffect(
+              current,
+              RuntimePhaseEffect.make({
+                effectKey,
+                phase,
+                status: "pending",
+                generation: current.generation,
+                attempt: current.attempt,
+                updatedAt: now,
+              }),
+              limits.maxPhaseEffects,
+            );
+            if (updated === undefined) {
+              return yield* new RuntimeCapacityError({
+                resource: "phase-effect-ledger",
+                limit: limits.maxPhaseEffects,
+                message: `Phase effect ledger is limited to ${limits.maxPhaseEffects} entries`,
+              });
+            }
+            return {
+              state: { ...state, operations: replaceOperation(state, updated) },
+              value: true,
+            };
+          }),
+        );
+      });
+
+      const completePhaseEffect = Effect.fn("DurableExecution.completePhaseEffect")(function* (
+        sessionId: SessionId,
+        operation: RuntimeOperationRecordType,
+        phase: RuntimePhase,
+        effectKey: string,
+      ) {
+        const now = yield* Clock.currentTimeMillis;
+        return yield* store.transact(
+          "complete-phase-effect",
+          sessionId,
+          initial(sessionId, now),
+          Effect.fn("DurableExecution.completePhaseEffect.transition")(function* (state) {
+            const current = findRuntimeOperation(state, operation.operationId);
+            if (current === undefined) {
+              return yield* transitionError("complete-phase-effect", "Operation disappeared");
+            }
+            if (
+              current.generation !== operation.generation ||
+              !ownsUnexpiredLease(current, operation, now)
+            ) {
+              return yield* new RuntimeFenceError({
+                operationId: operation.operationId,
+                expectedGeneration: current.generation,
+                receivedGeneration: operation.generation,
+                message: "Stale or lease-expired owner cannot complete a phase effect",
+              });
+            }
+            const updated = upsertPhaseEffect(
+              current,
+              RuntimePhaseEffect.make({
+                effectKey,
+                phase,
+                status: "completed",
+                generation: current.generation,
+                attempt: current.attempt,
+                updatedAt: now,
+              }),
+              limits.maxPhaseEffects,
+            );
+            if (updated === undefined) {
+              return yield* new RuntimeCapacityError({
+                resource: "phase-effect-ledger",
+                limit: limits.maxPhaseEffects,
+                message: `Phase effect ledger is limited to ${limits.maxPhaseEffects} entries`,
+              });
+            }
+            return {
+              state: { ...state, operations: replaceOperation(state, updated) },
+              value: undefined,
+            };
+          }),
+        );
+      });
+
       const prepareRecovery = Effect.fn("DurableExecution.prepareRecovery")(function* (
         sessionId: SessionId,
       ) {
         const now = yield* Clock.currentTimeMillis;
-        return yield* store.transact<RecoveryPreparation, RuntimeTransitionError>(
+        return yield* store.transact<
+          RecoveryPreparation,
+          RuntimeTransitionError | RuntimeCapacityError
+        >(
+          "prepare-recovery",
           sessionId,
           initial(sessionId, now),
           Effect.fn("DurableExecution.prepareRecovery.transition")(function* (state) {
             const incident = state.recovery;
             if (incident === null) {
-              return yield* transitionError("recover", "No recovery incident is scheduled");
+              return {
+                state,
+                value: { _tag: "Noop" as const, operation: null },
+              };
             }
             const operation = findRuntimeOperation(state, incident.operationId);
             if (operation === undefined) {
@@ -1185,16 +1572,34 @@ export const makeDurableExecutionLayer = (
                         ? "recovery-no-progress-timeout"
                         : "recovery-attempts-exhausted";
               const generation = state.generation + 1;
-              const exhaustedOperation: RuntimeOperationRecordType = {
-                ...operation,
-                status: "failed",
-                checkpoint: "terminal",
-                generation,
-                ownerBootId: null,
-                leaseExpiresAt: null,
-                terminalReason: reason,
-                updatedAt: now,
-              };
+              const exhaustedOperation = upsertPhaseEffect(
+                {
+                  ...operation,
+                  status: "failed",
+                  checkpoint: "terminal",
+                  generation,
+                  ownerBootId: null,
+                  leaseExpiresAt: null,
+                  terminalReason: reason,
+                  updatedAt: now,
+                },
+                RuntimePhaseEffect.make({
+                  effectKey: phaseEffectKey(operation.operationId, "terminal", generation),
+                  phase: "terminal",
+                  status: "completed",
+                  generation,
+                  attempt: operation.attempt,
+                  updatedAt: now,
+                }),
+                limits.maxPhaseEffects,
+              );
+              if (exhaustedOperation === undefined) {
+                return yield* new RuntimeCapacityError({
+                  resource: "phase-effect-ledger",
+                  limit: limits.maxPhaseEffects,
+                  message: `Phase effect ledger is limited to ${limits.maxPhaseEffects} entries`,
+                });
+              }
               const exhaustedStream: RuntimeStreamRecordType = {
                 ...stream,
                 status: "failed",
@@ -1223,6 +1628,33 @@ export const makeDurableExecutionLayer = (
             }
             if (incident.kind === "parked") {
               return { state, value: { _tag: "Parked" as const, operation } };
+            }
+            const alarm = state.alarm;
+            if (alarm === null || alarm._tag !== "Recover") {
+              return {
+                state,
+                value: { _tag: "Noop" as const, operation },
+              };
+            }
+            if (
+              alarm.operationId !== operation.operationId ||
+              alarm.generation !== operation.generation ||
+              incident.scheduledAt !== alarm.scheduledAt
+            ) {
+              return {
+                state: {
+                  ...state,
+                  recovery: { ...incident, status: "scheduled", scheduledAt: null },
+                  alarm: null,
+                },
+                value: { _tag: "Noop" as const, operation },
+              };
+            }
+            if (alarm.scheduledAt > now) {
+              return {
+                state,
+                value: { _tag: "Noop" as const, operation },
+              };
             }
             const generation = state.generation + 1;
             const recovering: RuntimeOperationRecordType = {
@@ -1272,25 +1704,55 @@ export const makeDurableExecutionLayer = (
                   ? Effect.succeed(Stream.empty)
                   : prepareRecovery(sessionId).pipe(
                       Effect.flatMap((decision) => {
-                        if (decision._tag === "Exhausted" || decision._tag === "Parked") {
+                        if (
+                          decision._tag === "Noop" ||
+                          decision._tag === "Exhausted" ||
+                          decision._tag === "Parked"
+                        ) {
                           return Effect.succeed(Stream.empty);
                         }
                         if (decision.kind === "partial-continuation") {
-                          return executor
-                            .persistPartial({
-                              sessionId,
-                              assistantMessageId: decision.operation.assistantMessageId,
-                              text: decision.partial,
-                            })
-                            .pipe(
-                              Effect.map(() =>
-                                executeClaimed(sessionId, decision.operation, "continue"),
-                              ),
-                            );
+                          return persistRequestSnapshot(sessionId, decision.operation).pipe(
+                            Effect.flatMap((prepared) => {
+                              const effectKey = phaseEffectKey(
+                                prepared.operationId,
+                                "transcript-partial",
+                                0,
+                              );
+                              return beginPhaseEffect(
+                                sessionId,
+                                prepared,
+                                "transcript-partial",
+                                effectKey,
+                              ).pipe(
+                                Effect.flatMap((shouldPersist) =>
+                                  shouldPersist
+                                    ? executor
+                                        .persistPartial({
+                                          sessionId,
+                                          assistantMessageId: prepared.assistantMessageId,
+                                          text: decision.partial,
+                                        })
+                                        .pipe(
+                                          Effect.andThen(
+                                            completePhaseEffect(
+                                              sessionId,
+                                              prepared,
+                                              "transcript-partial",
+                                              effectKey,
+                                            ),
+                                          ),
+                                        )
+                                    : Effect.void,
+                                ),
+                                Effect.map(() => executeClaimed(sessionId, prepared, "continue")),
+                              );
+                            }),
+                          );
                         }
                         if (decision.kind === "pre-stream-retry") {
-                          return Effect.succeed(
-                            executeClaimed(sessionId, decision.operation, "fresh"),
+                          return persistRequestSnapshot(sessionId, decision.operation).pipe(
+                            Effect.map((prepared) => executeClaimed(sessionId, prepared, "fresh")),
                           );
                         }
                         return Effect.succeed(Stream.empty);
@@ -1304,6 +1766,7 @@ export const makeDurableExecutionLayer = (
       const cleanup = Effect.fn("DurableExecution.cleanup")(function* (sessionId: SessionId) {
         const now = yield* Clock.currentTimeMillis;
         return yield* store.transact(
+          "cleanup",
           sessionId,
           initial(sessionId, now),
           Effect.fn("DurableExecution.cleanup.transition")((state) =>

@@ -19,7 +19,7 @@ import {
 } from "../shared/agent-protocol.ts";
 import { AgentService } from "./agent-service.ts";
 import { AgentServiceLive } from "./agent-service-live.ts";
-import { AgentTurnExecutorLive } from "./agent-turn-executor-live.ts";
+import { agentTurnExecutorLayer } from "./agent-turn-executor-live.ts";
 import {
   DurableExecution,
   DurableExecutionLive,
@@ -48,6 +48,7 @@ const runtimeRpcError = (error: DurableExecutionError): AgentRpcError => {
         message: error.message,
       });
     case "RuntimeCapacityError":
+    case "RuntimeCursorError":
     case "RuntimeFenceError":
     case "RuntimeTransitionError":
       return new AgentInferenceError({
@@ -83,7 +84,7 @@ export default class AgentSession extends Cloudflare.DurableObject<AgentSession>
       Layer.provide(MessageIdSourceLive),
       Layer.provide(languageModel),
     );
-    const turnExecutorLayer = AgentTurnExecutorLive.pipe(Layer.provide(agentLayer));
+    const turnExecutorLayer = agentTurnExecutorLayer(modelName).pipe(Layer.provide(agentLayer));
     const durableExecutionLayer = DurableExecutionLive.pipe(
       Layer.provide(DurableObjectRuntimeStore),
       Layer.provide(RuntimeIdSourceLive),
@@ -108,21 +109,34 @@ export default class AgentSession extends Cloudflare.DurableObject<AgentSession>
       const ready = Effect.fn("AgentSession.ready")(function* (sessionId: SessionId) {
         const wake = yield* runtime.wake(sessionId).pipe(Effect.mapError(runtimeRpcError));
         if (wake.recoveryAlarmAt !== null) yield* state.storage.setAlarm(wake.recoveryAlarmAt);
-        if (wake.recoverableOperationId !== null) {
-          yield* sockets.recoverSession(sessionId).pipe(
-            Effect.mapError((error) =>
-              error._tag === "AgentProtocolError"
-                ? new AgentInferenceError({
-                    operation: "recovery-broadcast",
-                    message: error.message,
-                  })
-                : runtimeRpcError(error),
-            ),
-          );
-        } else if (wake.runnableOperationId !== null && wake.runnableStreamId !== null) {
+        if (wake.runnableOperationId !== null && wake.runnableStreamId !== null) {
           yield* state.waitUntil(
             sockets.runAccepted(sessionId, wake.runnableOperationId, wake.runnableStreamId),
           );
+        }
+        return wake;
+      });
+
+      const turnReady = Effect.fn("AgentSession.turnReady")(function* (sessionId: SessionId) {
+        const wake = yield* ready(sessionId);
+        if (wake.recoverableOperationId !== null) {
+          return yield* new AgentInferenceError({
+            operation: "durable-recovery-pending",
+            message: "The previous durable turn must recover before session mutation",
+          });
+        }
+        return wake;
+      });
+
+      const mutableSession = Effect.fn("AgentSession.mutableSession")(function* (
+        sessionId: SessionId,
+      ) {
+        const wake = yield* turnReady(sessionId);
+        if (wake.snapshot.activeOperation !== null) {
+          return yield* new AgentInferenceError({
+            operation: "durable-turn-active",
+            message: "Context and compaction cannot change during an active durable turn",
+          });
         }
       });
 
@@ -136,10 +150,10 @@ export default class AgentSession extends Cloudflare.DurableObject<AgentSession>
             Effect.mapError(runtimeRpcError),
           ),
         updateContext: ({ sessionId, context }) =>
-          ready(sessionId).pipe(Effect.andThen(agent.updateContext(sessionId, context))),
+          mutableSession(sessionId).pipe(Effect.andThen(agent.updateContext(sessionId, context))),
         sendMessage: ({ sessionId, prompt }) =>
           Stream.unwrap(
-            ready(sessionId).pipe(
+            turnReady(sessionId).pipe(
               Effect.andThen(runtime.admit(sessionId, prompt)),
               Effect.mapError(runtimeRpcError),
               Effect.map((admission) =>
@@ -170,7 +184,7 @@ export default class AgentSession extends Cloudflare.DurableObject<AgentSession>
             ),
           ),
         compactSession: ({ sessionId }) =>
-          ready(sessionId).pipe(Effect.andThen(agent.compactSession(sessionId))),
+          mutableSession(sessionId).pipe(Effect.andThen(agent.compactSession(sessionId))),
       });
 
       const rpcHandler = RpcServer.toHttpEffect(AgentRpcs).pipe(
@@ -225,10 +239,8 @@ export default class AgentSession extends Cloudflare.DurableObject<AgentSession>
           return;
         }
         const outcome = yield* Effect.gen(function* () {
-          const wake = yield* runtime.wake(decoded.success);
-          if (wake.recoverableOperationId !== null) {
-            yield* sockets.recoverSession(decoded.success);
-          } else if (wake.runnableOperationId !== null && wake.runnableStreamId !== null) {
+          const wake = yield* sockets.recoverSession(decoded.success);
+          if (wake.runnableOperationId !== null && wake.runnableStreamId !== null) {
             yield* state.waitUntil(
               sockets.runAccepted(decoded.success, wake.runnableOperationId, wake.runnableStreamId),
             );

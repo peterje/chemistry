@@ -59,11 +59,11 @@ Events use a per-stream sequence beginning at zero. Each event is durably append
 
 `DurableExecution` hides operation journals, stream records, checkpoints, leases, generations, recovery incidents, alarms, and cleanup. Admission is durable and keyed by a client submission ID. Duplicate submissions converge on the same operation. One session Durable Object owns a bounded FIFO and executes at most one active turn.
 
-Every producer mutation includes its generation. A wake from another boot interrupts the old owner, and stale appends are rejected before publication.
+Every producer mutation includes its generation. A wake from another boot—or an expired lease in the same boot—interrupts the old owner, and stale appends are rejected before publication. Operation records include an `agent-turn` kind, immutable input, a preparing-phase snapshot of model/context/history policy, and a bounded phase-effect ledger. Stable effect keys let transcript partial persistence converge across ambiguous commits while inference remains honestly at-least-once.
 
 ### Recovery
 
-Recovery classifies interrupted work as pre-stream retry, partial continuation, terminal no-op, parked work, or unrecoverable work. Attempts, no-progress, total work, memory-reset strikes, leases, stalls, alarms, retained streams, and reconnects all have finite bounds.
+Recovery classifies interrupted work as pre-stream retry, partial continuation, terminal no-op, parked work, or unrecoverable work. Attempts, no-progress, total work, memory-reset strikes, leases, stalls, alarms, retained streams, and reconnects all have finite bounds. A recovery alarm must match the persisted operation, generation, and scheduled timestamp and must be due; early alarms preserve the intent, while stale alarms consume it without claiming work.
 
 Workers AI does not expose a durable iterator cursor. After isolate loss, Chemistry reconstructs the safe partial and starts a new native Workers AI call from a transcript-level continuation prompt. This is **not** byte-exact provider resume. Durable phases are at-least-once; arbitrary external effects are not claimed to be exactly once.
 
@@ -90,6 +90,7 @@ The runtime still supports:
 | Completed-stream grace               |                24 hours |
 | Reconnect attempts / maximum delay   |          8 / 10 seconds |
 | Recovery attempts / work units       |               5 / 1,024 |
+| Phase-effect ledger entries          |                      32 |
 | Memory-reset strikes                 |                       3 |
 | Lease / stable-state timeout         | 30 seconds / 30 seconds |
 | Inference stall watchdog             |              45 seconds |
