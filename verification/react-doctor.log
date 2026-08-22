@@ -1,9 +1,24 @@
-$ npx react-doctor@latest --verbose --scope changed --include-untracked
+✔ Select projects › @chemistry/website
 Scanning uncommitted changes
-Scanned 17 files in 1.9s
 
-React Doctor — alchemy-agent
+
+✔ Scanned 20 files in 0.7s [~8 workers]
+✔ Scanned 20 files in 1.7s
+
+React Doctor — @chemistry/website
 Score: 100 / 100 Great
 
-No issues found.
-Full diagnostics were written to the command's temporary output directory.
+✔ No issues found!
+  Full diagnostics written to /var/folders/1d/ypjrh28d5z308qpsfjvh0rhc0000gn/T/react-doctor-0224685b-3bca-407b-a4be-c402effde4d5
+
+  ────────────────────────────────────────────────────────────
+
+  Share: https://react.doctor/share?p=%40chemistry%2Fwebsite&s=100
+  Tell others how you did on socials
+
+  Docs: https://react.doctor/docs
+  Learn more about fixing issues, setting up CI/CD, and
+  configuring rules with a config file
+
+  GitHub: https://github.com/millionco/react-doctor
+  Report issues and star the repository!

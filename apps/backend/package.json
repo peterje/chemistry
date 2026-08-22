@@ -1,0 +1,17 @@
+{
+  "name": "@chemistry/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./agent-backend": "./src/agent-backend.ts",
+    "./runtime-websocket-adapter": "./src/runtime-websocket-adapter.ts"
+  },
+  "dependencies": {
+    "@chemistry/agent-runtime": "workspace:*",
+    "@chemistry/chat-catalog": "workspace:*",
+    "@chemistry/contracts": "workspace:*",
+    "alchemy": "2.0.0-beta.72",
+    "effect": "4.0.0-rc.110"
+  }
+}

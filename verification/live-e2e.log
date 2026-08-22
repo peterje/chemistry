@@ -1,45 +1,96 @@
-$ RUN_LIVE_E2E=1 bun test test/live.e2e.test.ts
+$ RUN_LIVE_E2E=1 bun test apps/backend/test/live.e2e.test.ts
 bun test v1.3.14 (0d9b296a)
 
-test/live.e2e.test.ts:
+apps/backend/test/live.e2e.test.ts:
 Plan: 2 to create
 [AgentBackend] create
 [AgentBackend/AI] create
 [AgentBackend/AgentSession] create
+[AgentBackend/ChatCatalogObject] create
 [Website] create
 [Website/BACKEND] create
 
-[AgentBackend] pre-creating
 [Website] pre-creating
+[AgentBackend] pre-creating
 [Website] Pre-creating worker...
 [AgentBackend] Pre-creating worker...
 [Website] pending
 [AgentBackend] pending
 [AgentBackend] creating
-[AgentBackend] Uploading worker (516.00 KB) ...
+[AgentBackend] Uploading worker (580.38 KB) ...
+[AgentBackend] Enabling workers.dev subdomain...
 [Website] creating
 [AgentBackend] created
 [36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
-[32m✓ built in 318ms[39m
+[32m✓ built in 368ms[39m
 [36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
-[32m✓ built in 230ms[39m
+[32m✓ built in 214ms[39m
 [Website] Checking assets...
-[Website] Uploaded 0 of 4 assets...
-[Website] Uploaded 2 of 4 assets...
-[Website] Uploaded 3 of 4 assets...
-[Website] Uploaded 4 of 4 assets...
-[Website] Uploading worker (1.71 MB) ...
+[Website] Uploaded 0 of 7 assets...
+[Website] Uploaded 3 of 7 assets...
+[Website] Uploaded 5 of 7 assets...
+[Website] Uploaded 7 of 7 assets...
+[Website] Uploading worker (2.32 MB) ...
 [Website] Enabling workers.dev subdomain...
 [Website] created
 [AgentBackend] created
 [Website] created
 
 Done: 4 succeeded
-(pass) verifies messages, context, tools, and compaction through shared Effect RPC [16649.27ms]
+(pass) verifies messages, context, tools, compaction, and runtime snapshots through Effect RPC [41249.22ms]
+[04:09:06.071] INFO (#995): Reconnect replay terminal evidence {
+  sequence: 59,
+  generation: 1,
+}
+[04:09:26.911] INFO (#995): Hibernation auto-response evidence {
+  keepAlive: 0,
+}
+[04:09:46.931] INFO (#995): Hibernation auto-response evidence {
+  keepAlive: 1,
+}
+[04:10:06.987] INFO (#995): Hibernation auto-response evidence {
+  keepAlive: 2,
+}
+[04:10:22.055] INFO (#995): Hibernation wake evidence {
+  beforeBootId: "boot-41ee3eb6-e5af-4641-ac1f-9f2e91633ac2",
+  afterBootId: "boot-52d615a3-96d6-4a1e-9f97-ea5430dd9c07",
+}
+(pass) proves typed routing, reconnect replay, hibernation attachment wake, and RPC controls [83359.92ms]
+Plan: 1 to update, 1 to noop
+[AgentBackend] update
+[Website] noop
+
+[AgentBackend] pending
+[AgentBackend] updating
+[AgentBackend] Uploading worker (580.12 KB) ...
+[AgentBackend] updated
+[AgentBackend] updated
+
+Done: 2 succeeded
+Plan: 1 to update, 1 to noop
+[AgentBackend] update
+[Website] noop
+
+[AgentBackend] pending
+[AgentBackend] updating
+[AgentBackend] Uploading worker (580.42 KB) ...
+[AgentBackend] updated
+[AgentBackend] updated
+
+Done: 2 succeeded
+[04:11:26.018] INFO (#1376): Redeploy terminal evidence {
+  status: "completed",
+  generation: 2,
+  attempt: 1,
+  recoveryWork: 104,
+  reason: null,
+}
+(pass) forces a mid-turn Worker redeploy and converges through transcript continuation [61974.07ms]
 Plan: 2 to delete
 [AgentBackend] delete
 [AgentBackend/AI] delete
 [AgentBackend/AgentSession] delete
+[AgentBackend/ChatCatalogObject] delete
 [Website] delete
 [Website/BACKEND] delete
 
@@ -50,7 +101,7 @@ Plan: 2 to delete
 
 Done: 2 succeeded
 
- 1 pass
+ 3 pass
  0 fail
- 11 expect() calls
-Ran 1 test across 1 file. [32.20s]
+ 53 expect() calls
+Ran 3 tests across 1 file. [204.53s]

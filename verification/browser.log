@@ -1,0 +1,10 @@
+$ playwright test
+
+Running 4 tests using 1 worker
+
+  ✓  1 apps/website/test/browser/simple-turn.pw.ts:42:1 › canonical chat routing persists history and ACKs a real model turn (4.3s)
+  ✓  2 apps/website/test/browser/simple-turn.pw.ts:102:1 › the configured model completes typed tool activity in the chat UI (4.9s)
+  ✓  3 apps/website/test/browser/simple-turn.pw.ts:127:1 › mobile navigation, composer submission, and history switching remain usable (3.4s)
+  ✓  4 apps/website/test/browser/simple-turn.pw.ts:164:1 › transcript and history queries render recoverable network error states (909ms)
+
+  4 passed (14.1s)

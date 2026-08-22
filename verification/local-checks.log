@@ -1,126 +1,150 @@
-Checking formatting...
+bun install v1.3.14 (0d9b296a)
 
-All matched files use the correct format.
-Finished in 323ms on 70 files using 8 threads.
+Checked 616 installs across 785 packages (no changes) [31.00ms]
+$ oxfmt .
 $ oxlint .
 $ tsc --noEmit
 bun test v1.3.14 (0d9b296a)
 
-test/agent-compaction.test.ts:
-(pass) non-destructive chat compaction > persists a summary overlay, preserves raw history, and rehydrates it [48.52ms]
-(pass) non-destructive chat compaction > automatically compacts above the configured threshold [4.64ms]
-(pass) non-destructive chat compaction > moves the boundary rather than splitting a tool interaction [6.24ms]
+tools/workspace-boundaries.test.ts:
+(pass) workspace dependency direction is acyclic and source imports use package interfaces [6.37ms]
 
-test/runtime-websocket-attachment.test.ts:
-(pass) hibernatable socket attachment > rehydrates typed session, probe, stream, and cursor state [5.80ms]
-(pass) hibernatable socket attachment > advances ACKs monotonically and rejects unsent or stale streams [18.41ms]
-(pass) hibernatable socket attachment > rejects stale versions and malformed cursors [6.03ms]
+apps/website/test/markdown-message.test.tsx:
+(pass) assistant Markdown renders semantic emphasis, lists, and tables [8.84ms]
 
-test/runtime-fault-matrix.test.ts:
-(pass) durable transition crash matrix > admission converges across failures before and after commit [2.98ms]
-(pass) durable transition crash matrix > claim is retryable whether the failure happens before or after commit [6.58ms]
-(pass) durable transition crash matrix > request-snapshot persistence converges across failures before and after commit [2.39ms]
-(pass) durable transition crash matrix > mark-streaming converges across failures before and after commit [8.13ms]
-(pass) durable transition crash matrix > recovery scheduling converges across failures before and after commit [19.98ms]
-(pass) durable transition crash matrix > stale alarm-intent consumption converges before and after commit [8.96ms]
-(pass) durable transition crash matrix > append never publishes an uncommitted event and replays a committed-but-unacknowledged event [2.48ms]
-(pass) durable transition crash matrix > a terminal committed before acknowledgement remains the single terminal outcome [10.63ms]
-(pass) durable transition crash matrix > wake incident creation is retryable and preserves one incident after post-commit failure [2.59ms]
-(pass) durable transition crash matrix > recovery preparation converges across failures before and after claim commit [4.41ms]
-(pass) durable transition crash matrix > partial-effect ledger converges every begin/complete commit window [32.73ms]
-(pass) durable transition crash matrix > transcript reconciliation is idempotent before and after terminal commit [1.70ms]
-(pass) durable transition crash matrix > cleanup converges across failures before and after deletion commit [2.22ms]
+apps/backend/test/runtime-websocket-attachment.test.ts:
+(pass) hibernatable socket attachment > rehydrates typed session, probe, stream, and cursor state [0.83ms]
+(pass) hibernatable socket attachment > advances ACKs monotonically and rejects unsent or stale streams [0.15ms]
+(pass) hibernatable socket attachment > rejects stale versions and malformed cursors [0.31ms]
 
-test/agent-message-context.test.ts:
-(pass) durable message sending and context > persists transcript history and isolates sessions [19.42ms]
-(pass) durable message sending and context > persists editable context and injects it into model requests [16.64ms]
-(pass) durable message sending and context > streams ordered turn events and returns the stored completion [1.42ms]
-
-test/durable-execution.test.ts:
-(pass) Effect-native durable execution > persists every event before emission and replays strictly after a cursor [9.31ms]
-(pass) Effect-native durable execution > converges duplicate submissions and preserves durable FIFO order [2.17ms]
-(pass) Effect-native durable execution > restores the oldest durably admitted turn after ephemeral runners disappear [4.34ms]
-(pass) Effect-native durable execution > isolates durable queues and streams between named sessions [2.23ms]
-(pass) Effect-native durable execution > generation-fences a stale producer before its next append [2.00ms]
-(pass) Effect-native durable execution > recovers an expired same-boot lease and fences the abandoned runner [11.22ms]
-(pass) Effect-native durable execution > rehydrates an interrupted partial and continues under a new generation [2.20ms]
-(pass) Effect-native durable execution > rejects early and stale recovery alarms before consuming a current due intent [2.48ms]
-(pass) Effect-native durable execution > converges the transcript-before-runtime-terminal crash window without re-inference [2.15ms]
-(pass) Effect-native durable execution > terminalizes instead of executing when the recovery attempt budget is exhausted [1.46ms]
-(pass) Effect-native durable execution > parks explicit interaction checkpoints without re-executing [0.91ms]
-(pass) Effect-native durable execution > bounds waiting for serialized turn ownership to stabilize [9.68ms]
-(pass) Effect-native durable execution > routes a live stall into durable bounded recovery [1.08ms]
-(pass) Effect-native durable execution > bounds repeated memory-reset recovery failures with a durable strike counter [2.35ms]
-(pass) Effect-native durable execution > enforces recovery work and no-progress budgets independently [4.08ms]
-(pass) Effect-native durable execution > rejects an oversized durable event before persistence or publication [11.70ms]
-(pass) Effect-native durable execution > rejects a stream that crosses its cumulative byte budget [13.56ms]
-(pass) Effect-native durable execution > removes expired streams and enforces bounded terminal retention [5.11ms]
-
-test/live.e2e.test.ts:
+apps/backend/test/live.e2e.test.ts:
 (skip) live Cloudflare E2E (set RUN_LIVE_E2E=1 or run bun run test:e2e)
 
-test/runtime-protocol.test.ts:
-(pass) shared runtime WebSocket protocol > round-trips typed resume frames through the shared schemas [47.74ms]
-(pass) shared runtime WebSocket protocol > rejects malformed, stale-shaped, and oversized frames as typed errors [1.85ms]
-(pass) shared runtime WebSocket protocol > keeps turn submissions and liveness frames schema-bounded [2.13ms]
+packages/contracts/test/runtime-protocol.test.ts:
+(pass) shared runtime WebSocket protocol > round-trips typed resume frames through the shared schemas [3.23ms]
+(pass) shared runtime WebSocket protocol > rejects malformed, stale-shaped, and oversized frames as typed errors [0.78ms]
+(pass) shared runtime WebSocket protocol > keeps turn submissions and liveness frames schema-bounded [0.81ms]
 
-test/agent-tools.test.ts:
-(pass) typed tool calling > executes the Toolkit handler and continues to a final answer [39.92ms]
-(pass) typed tool calling > fails with the typed loop-limit error after the configured bound [16.54ms]
+packages/contracts/test/agent-rpc-protocol.test.ts:
+(pass) shared AgentRpcs schema and NDJSON serialization > decodes branded payloads and rejects malformed session ids [4.77ms]
+(pass) shared AgentRpcs schema and NDJSON serialization > round-trips stream events and typed errors through schemas and NDJSON [1.01ms]
 
-test/replay-handoff.test.ts:
-(pass) stored replay to live handoff > deduplicates the event visible in both backlog and parked live delivery [9.33ms]
-(pass) stored replay to live handoff > orders out-of-order parked events and filters replayed cursors [0.09ms]
-(pass) stored replay to live handoff > parks live events before resume ACK and honors the later browser cursor [0.05ms]
+packages/client-runtime/test/resumable-agent-socket.test.ts:
+(pass) runtime socket URL > connects directly to the fixed local backend port [0.07ms]
+(pass) runtime socket URL > keeps deployed WebSockets same-origin [0.01ms]
+(pass) runtime socket URL > survives the React Strict Mode setup-cleanup-setup cycle [16.05ms]
+
+packages/client-runtime/test/runtime-client-state.test.ts:
+(pass) resumable browser runtime reducer > uses the validated high-water sequence on reconnect [0.19ms]
+(pass) resumable browser runtime reducer > clamps a stale local cursor to the durable probe high-water mark [0.16ms]
+(pass) resumable browser runtime reducer > deduplicates overlap and reconnects rather than accepting a gap [0.16ms]
+(pass) resumable browser runtime reducer > reconstructs a logical response from a full replay after reload [0.19ms]
+(pass) resumable browser runtime reducer > surfaces recovering and durable terminal states [0.08ms]
+
+packages/chat-catalog/test/chat-catalog.test.ts:
+(pass) catalog creation is idempotent and first activity sets a stable title [4.00ms]
+(pass) a first prompt equal to the placeholder remains immutable [0.07ms]
+(pass) legacy catalog migration preserves every existing title as immutable [0.08ms]
+(pass) catalog orders recent activity and remains bounded [18.66ms]
+(pass) long titles are compact and preserve a readable word boundary [0.04ms]
+
+packages/agent-runtime/test/agent-compaction.test.ts:
+(pass) non-destructive chat compaction > persists a summary overlay, preserves raw history, and rehydrates it [25.20ms]
+(pass) non-destructive chat compaction > automatically compacts above the configured threshold [6.04ms]
+(pass) non-destructive chat compaction > moves the boundary rather than splitting a tool interaction [6.30ms]
+
+packages/agent-runtime/test/runtime-fault-matrix.test.ts:
+(pass) durable transition crash matrix > admission converges across failures before and after commit [3.34ms]
+(pass) durable transition crash matrix > claim is retryable whether the failure happens before or after commit [6.13ms]
+(pass) durable transition crash matrix > request-snapshot persistence converges across failures before and after commit [4.91ms]
+(pass) durable transition crash matrix > mark-streaming converges across failures before and after commit [8.90ms]
+(pass) durable transition crash matrix > recovery scheduling converges across failures before and after commit [4.57ms]
+(pass) durable transition crash matrix > stale alarm-intent consumption converges before and after commit [2.64ms]
+(pass) durable transition crash matrix > append never publishes an uncommitted event and replays a committed-but-unacknowledged event [2.06ms]
+(pass) durable transition crash matrix > a terminal committed before acknowledgement remains the single terminal outcome [6.85ms]
+(pass) durable transition crash matrix > wake incident creation is retryable and preserves one incident after post-commit failure [0.86ms]
+(pass) durable transition crash matrix > recovery preparation converges across failures before and after claim commit [2.42ms]
+(pass) durable transition crash matrix > partial-effect ledger converges every begin/complete commit window [4.59ms]
+(pass) durable transition crash matrix > transcript reconciliation is idempotent before and after terminal commit [1.27ms]
+(pass) durable transition crash matrix > cleanup converges across failures before and after deletion commit [6.46ms]
+
+packages/agent-runtime/test/agent-message-context.test.ts:
+(pass) durable message sending and context > persists transcript history and isolates sessions [1.56ms]
+(pass) durable message sending and context > persists editable context and injects it into model requests [0.99ms]
+(pass) durable message sending and context > fails hard when a tool-capable model stream has no semantic output [0.66ms]
+(pass) durable message sending and context > streams ordered turn events and returns the stored completion [0.72ms]
+
+packages/agent-runtime/test/durable-execution.test.ts:
+(pass) Effect-native durable execution > persists every event before emission and replays strictly after a cursor [12.23ms]
+(pass) Effect-native durable execution > converges duplicate submissions and preserves durable FIFO order [1.54ms]
+(pass) Effect-native durable execution > restores the oldest durably admitted turn after ephemeral runners disappear [1.27ms]
+(pass) Effect-native durable execution > isolates durable queues and streams between named sessions [1.23ms]
+(pass) Effect-native durable execution > generation-fences a stale producer before its next append [1.01ms]
+(pass) Effect-native durable execution > recovers an expired same-boot lease and fences the abandoned runner [1.01ms]
+(pass) Effect-native durable execution > rehydrates an interrupted partial and continues under a new generation [1.09ms]
+(pass) Effect-native durable execution > rejects early and stale recovery alarms before consuming a current due intent [1.16ms]
+(pass) Effect-native durable execution > converges the transcript-before-runtime-terminal crash window without re-inference [0.60ms]
+(pass) Effect-native durable execution > terminalizes instead of executing when the recovery attempt budget is exhausted [0.74ms]
+(pass) Effect-native durable execution > parks explicit interaction checkpoints without re-executing [0.67ms]
+(pass) Effect-native durable execution > bounds waiting for serialized turn ownership to stabilize [0.87ms]
+(pass) Effect-native durable execution > routes a live stall into durable bounded recovery [0.60ms]
+(pass) Effect-native durable execution > bounds repeated memory-reset recovery failures with a durable strike counter [0.98ms]
+(pass) Effect-native durable execution > enforces recovery work and no-progress budgets independently [1.59ms]
+(pass) Effect-native durable execution > rejects an oversized durable event before persistence or publication [6.55ms]
+(pass) Effect-native durable execution > rejects a stream that crosses its cumulative byte budget [0.86ms]
+(pass) Effect-native durable execution > removes expired streams and enforces bounded terminal retention [3.73ms]
+
+packages/agent-runtime/test/agent-tools.test.ts:
+(pass) typed tool calling > executes the Toolkit handler and continues to a final answer [2.38ms]
+(pass) typed tool calling > fails with the typed loop-limit error after the configured bound [2.42ms]
+
+packages/agent-runtime/test/replay-handoff.test.ts:
+(pass) stored replay to live handoff > deduplicates the event visible in both backlog and parked live delivery [5.79ms]
+(pass) stored replay to live handoff > orders out-of-order parked events and filters replayed cursors [0.05ms]
+(pass) stored replay to live handoff > parks live events before resume ACK and honors the later browser cursor [0.04ms]
 (pass) stored replay to live handoff > signals bounded overflow instead of dropping a durable event [0.03ms]
 
-test/runtime-diagnostics.test.tsx:
-(pass) runtime diagnostics renders replay, checkpoint, recovery, and terminal evidence [10.30ms]
-
-test/runtime-state-migration.test.ts:
-(pass) versioned runtime migration > creates a separate empty runtime record when an existing session has none [0.45ms]
-(pass) versioned runtime migration > migrates v1 operations into typed input, request snapshot, and phase ledger [0.40ms]
-(pass) versioned runtime migration > rejects unknown runtime versions instead of silently resetting them [0.08ms]
-
-test/runtime-client-state.test.ts:
-(pass) resumable browser runtime reducer > uses the validated high-water sequence on reconnect [0.17ms]
-(pass) resumable browser runtime reducer > clamps a stale local cursor to the durable probe high-water mark [0.09ms]
-(pass) resumable browser runtime reducer > deduplicates overlap and reconnects rather than accepting a gap [0.09ms]
-(pass) resumable browser runtime reducer > reconstructs a logical response from a full replay after reload [0.09ms]
-(pass) resumable browser runtime reducer > surfaces recovering and durable terminal states [0.05ms]
-
-test/agent-rpc-protocol.test.ts:
-(pass) shared AgentRpcs schema and NDJSON serialization > decodes branded payloads and rejects malformed session ids [0.44ms]
-(pass) shared AgentRpcs schema and NDJSON serialization > round-trips stream events and typed errors through schemas and NDJSON [0.63ms]
+packages/agent-runtime/test/runtime-state-migration.test.ts:
+(pass) versioned runtime migration > creates a separate empty runtime record when an existing session has none [4.89ms]
+(pass) versioned runtime migration > migrates v1 operations into typed input, request snapshot, and phase ledger [0.36ms]
+(pass) versioned runtime migration > rejects unknown runtime versions instead of silently resetting them [0.07ms]
 
 1 tests skipped:
 (skip) live Cloudflare E2E (set RUN_LIVE_E2E=1 or run bun run test:e2e)
 
- 60 pass
+ 70 pass
  1 skip
  0 fail
- 279 expect() calls
-Ran 61 tests across 13 files. [2.12s]
+ 659 expect() calls
+Ran 71 tests across 16 files. [1435.00ms]
+$ bun run typecheck && cd apps/website && bun run build
+$ tsc --noEmit
 $ vite build && rm -rf .tanstack src/.tanstack
 vite v8.0.7 building client environment for production...
-[2Ktransforming...✓ 302 modules transformed.
+[2Ktransforming...✓ 553 modules transformed.
 rendering chunks...
 computing gzip size...
-dist/client/assets/main-D-kSr6R4.css              7.46 kB │ gzip:  2.16 kB
-dist/client/assets/routes-C1ruab3J.js            88.71 kB │ gzip: 30.36 kB
-dist/client/assets/RegistryContext-BW3eBDQu.js  157.41 kB │ gzip: 51.58 kB
-dist/client/assets/main-DGjtXKPY.js             307.81 kB │ gzip: 96.39 kB
+dist/client/assets/main-DJ24JRq6.css             12.44 kB │ gzip:  3.56 kB
+dist/client/assets/routes-DKFdSlz2.js             0.60 kB │ gzip:  0.40 kB
+dist/client/assets/chat._chatId-C4P6vCfT.js      34.21 kB │ gzip: 12.07 kB
+dist/client/assets/use-create-chat-B2iiWhGp.js   74.43 kB │ gzip: 26.45 kB
+dist/client/assets/RegistryContext-aQ8Ptr7P.js  158.43 kB │ gzip: 52.01 kB
+dist/client/assets/chat._chatId-UPqOh9P4.js     170.34 kB │ gzip: 51.12 kB
+dist/client/assets/main-DKor_7B_.js             273.79 kB │ gzip: 85.66 kB
 
-✓ built in 579ms
+✓ built in 225ms
 vite v8.0.7 building ssr environment for production...
-[2Ktransforming...✓ 58 modules transformed.
+[2Ktransforming...✓ 121 modules transformed.
 rendering chunks...
 computing gzip size...
-dist/server/assets/start-S6R1ogjB.js                        0.14 kB │ gzip:  0.13 kB
-dist/server/assets/_tanstack-start-manifest_v-DcUT8qof.js   0.70 kB │ gzip:  0.38 kB
-dist/server/assets/router-C0sGq_Au.js                       2.91 kB │ gzip:  1.12 kB
-dist/server/server.js                                      38.01 kB │ gzip: 10.50 kB
-dist/server/assets/routes-D1Zavz9e.js                      39.09 kB │ gzip:  9.45 kB
+dist/server/assets/start-VavYQVXM.js                         0.21 kB │ gzip:  0.17 kB
+dist/server/assets/chat._chatId-D_lnHVh_.js                  0.41 kB │ gzip:  0.27 kB
+dist/server/assets/routes-DDaTtlA-.js                        1.06 kB │ gzip:  0.57 kB
+dist/server/assets/_tanstack-start-manifest_v-CT5HzT8j.js    1.06 kB │ gzip:  0.48 kB
+dist/server/assets/router-BfQAB2HT.js                        3.18 kB │ gzip:  1.19 kB
+dist/server/assets/use-create-chat-DDygHrTR.js              14.35 kB │ gzip:  3.88 kB
+dist/server/assets/chat._chatId-BSmQH_E5.js                 31.10 kB │ gzip:  7.83 kB
+dist/server/server.js                                      180.22 kB │ gzip: 41.07 kB
 
-✓ built in 63ms
+✓ built in 91ms
 $ tsc --noEmit

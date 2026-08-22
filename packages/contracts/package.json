@@ -1,0 +1,14 @@
+{
+  "name": "@chemistry/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./agent-protocol": "./src/agent-protocol.ts",
+    "./local-development": "./src/local-development.ts",
+    "./runtime-protocol": "./src/runtime-protocol.ts"
+  },
+  "dependencies": {
+    "effect": "4.0.0-rc.110"
+  }
+}

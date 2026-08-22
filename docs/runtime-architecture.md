@@ -24,23 +24,26 @@ A browser reconnect while the model iterator is still alive is byte/event-exact:
 ## Module seams
 
 ```text
-Website WebSocket route (adapter)
-  -> AgentBackend session router (adapter)
-    -> AgentSession Durable Object (composition root)
-      -> RuntimeProtocol (shared Effect Schemas)
-      -> DurableExecution (application module)
+apps/website route adapters
+  -> apps/backend AgentBackend session/catalog router
+    -> ChatCatalogObject Durable Object (singleton metadata authority)
+    -> AgentSession Durable Object (per-chat composition root)
+      -> @chemistry/contracts (shared Effect Schemas)
+      -> @chemistry/agent-runtime DurableExecution (application module)
           -> RuntimeStore (application-owned port)
               -> DurableObjectRuntimeStore (storage adapter)
-      -> AgentService (existing model/context/tool/compaction module)
-          -> SessionStore (existing transcript port)
-      -> SocketHub (DO WebSocket adapter)
+      -> AgentService (model/context/tool/compaction module)
+          -> SessionStore (transcript port)
+      -> RuntimeWebSocket (DO WebSocket adapter)
 
-React
-  -> ResumableAgentSocket (browser adapter)
-  -> Effect RPC atoms (control/snapshots remain unchanged)
+apps/website React
+  -> @chemistry/client-runtime ResumableAgentSocket
+  -> Effect RPC atoms for catalog/transcript controls
 ```
 
 `DurableExecution` is the deep module. Callers admit a submission, execute/observe it, replay a stream, inspect runtime state, or recover eligible work. The module owns state transitions, sequencing, fencing, budgets, and terminalization. Callers do not manipulate persistence keys, sequence numbers, leases, or incident records.
+
+Workspace dependencies point inward: website → client-runtime → contracts, backend → agent-runtime/chat-catalog/contracts, and each inner package → contracts only. A checked architecture test rejects package-interface bypasses and any cycle outside that DAG.
 
 The adapter audit found one existing persistence adapter, `DurableObjectSessionStore`. It remains the cohesive owner of transcript/context/compaction storage. Runtime records have a different lifecycle and write frequency, so they use a distinct `RuntimeStore` port and `DurableObjectRuntimeStore` adapter rather than widening transcript snapshots or allowing model writes to overwrite stream state. Runtime operation/stream terminal changes share one DO storage transaction. Provider calls never run inside a transaction. Transcript segments are persisted before the matching runtime terminal transition; deterministic message IDs and the recovery classifier converge the small transcript-before-runtime-terminal crash window instead of falsely claiming cross-module atomicity.
 
@@ -157,12 +160,15 @@ Transcript data keeps its existing key and schema:
 agent-session:<sessionId> -> StoredSession v1
 ```
 
-Runtime data is versioned separately:
+Runtime and navigation data are versioned separately:
 
 ```text
 agent-runtime:<sessionId> -> RuntimeStateV2
 runtime-alarm:<sessionId> -> next recovery/cleanup intent (inside RuntimeStateV2)
+ChatCatalogObject/global/chat-catalog:v1 -> bounded ChatCatalogStateV2 entries
 ```
+
+The singleton catalog retains at most 200 summaries ordered by activity. Creation is idempotent by `SessionId`; an explicit `placeholder`/`first-prompt` provenance field makes the first accepted user prompt title immutable even when its text is exactly “New chat,” and later accepted turns update recency without rewriting it. Legacy v1 summaries migrate as already titled so migration cannot rewrite a title that may have come from a real first prompt. Catalog metadata is auxiliary to per-chat execution: a bounded catalog transport failure is reported/logged but cannot strand an already durably admitted turn.
 
 `RuntimeStateV2` contains:
 
@@ -223,4 +229,4 @@ The gate never performs an unbounded model turn inside constructor startup. It r
 
 ## Verification model
 
-The deterministic adapter supports an explicit clock, boot ID, operation IDs, failure injection before/after every store transition, and recorded alarm intents. The transition matrix tests every crash point. Race tests register a live forwarder, append during backlog drain, and prove a strictly increasing unique sequence. Live verification records server boot identity so a hibernation/redeploy test can prove a wake or replacement occurred rather than merely reconnecting to the same in-memory producer. The credentialed replacement test uses a compile-time gate that is false in baseline source: its temporary fault build emits one deterministic partial, stalls, and aborts that isolate by alarm after the recovery build is deployed. This makes isolate loss repeatable without adding a remotely triggerable fault frame.
+The deterministic adapters support an explicit clock, boot ID, operation IDs, failure injection before/after every runtime-store transition, pure bounded catalog transitions, and recorded alarm intents. The transition matrix tests every crash point. Race tests register a live forwarder, append during backlog drain, and prove a strictly increasing unique sequence. Live verification records server boot identity so a hibernation/redeploy test can prove a wake or replacement occurred rather than merely reconnecting to the same in-memory producer. The credentialed replacement test uses a compile-time gate that is false in baseline source: its temporary fault build emits one deterministic partial, stalls, and aborts that isolate by alarm after the recovery build is deployed. This makes isolate loss repeatable without adding a remotely triggerable fault frame.

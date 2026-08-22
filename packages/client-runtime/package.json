@@ -1,0 +1,14 @@
+{
+  "name": "@chemistry/client-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./resumable-agent-socket": "./src/resumable-agent-socket.ts",
+    "./runtime-client-state": "./src/runtime-client-state.ts"
+  },
+  "dependencies": {
+    "@chemistry/contracts": "workspace:*",
+    "effect": "4.0.0-rc.110"
+  }
+}

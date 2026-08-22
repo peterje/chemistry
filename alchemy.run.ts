@@ -1,10 +1,15 @@
+import AgentBackend from "@chemistry/backend/agent-backend";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
-import AgentBackend from "./src/server/agent-backend.ts";
 
 /** Cloudflare-hosted web application for the agent demo. */
 export class Website extends Cloudflare.Website.Vite<Website>()("Website", {
+  rootDir: "apps/website",
+  memo: {
+    include: ["**/*", "../../packages/contracts/src/**", "../../packages/client-runtime/src/**"],
+    lockfile: true,
+  },
   compatibility: {
     flags: ["nodejs_compat", "enable_request_signal"],
   },
@@ -13,15 +18,12 @@ export class Website extends Cloudflare.Website.Vite<Website>()("Website", {
   },
 }) {}
 
-/** Runtime bindings exposed to the TanStack Start website Worker. */
-export type WebsiteEnv = Cloudflare.InferEnv<typeof Website>;
-
 /** Deployable Alchemy stack for the website and its bound agent backend. */
 export default Alchemy.Stack(
   "AlchemyAgent",
   {
     providers: Cloudflare.providers(),
-    state: Alchemy.localState(),
+    state: Cloudflare.state(),
   },
   Effect.gen(function* () {
     const backend = yield* AgentBackend;

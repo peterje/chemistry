@@ -11,41 +11,44 @@ The runtime now provides:
 - bounded FIFO turn admission and submission deduplication;
 - bounded recovery after stalls, hibernation, isolate loss, or redeploy;
 - transcript-level Workers AI continuation after iterator loss;
-- React reconnect, replay, reconstruction, and runtime diagnostics;
-- Effect RPC controls for transcript, context, compaction, streaming compatibility, and runtime snapshots.
+- React reconnect, replay, reconstruction, and polished chat rendering;
+- a bounded server-persisted conversation catalog with first-message titles and recency ordering;
+- Effect RPC controls for chat creation/history, transcript, context, compaction, streaming compatibility, and runtime snapshots.
 
 It does **not** depend on `@cloudflare/think`, the Cloudflare Agents SDK, the Vercel AI SDK, or any third-party model API.
 
 ## Architecture
 
 ```text
-React
-  ├─ ResumableAgentSocket ─ typed JSON /ws ─┐
-  └─ Effect Atom RPC ─── NDJSON /rpc ───────┤
-                                             ▼
-TanStack Start Website Worker
-  └─ BACKEND service binding
-       ▼
-AgentBackend RpcWorker
+apps/website (thin TanStack + React client)
+  ├─ @chemistry/client-runtime ─ typed JSON /ws ─┐
+  └─ Effect Atom RPC ───────── NDJSON /rpc ──────┤
+                                                  ▼
+TanStack Start Website Worker → BACKEND service binding
+                                                  ▼
+apps/backend AgentBackend RpcWorker
+  ├─ ChatCatalogObject.getByName("global")
+  │    └─ bounded durable chat metadata
   └─ AgentSession.getByName(sessionId)
-       ▼
-AgentSession Durable Object (one ordering authority per session)
-  ├─ hibernatable WebSocket adapter + schema-versioned attachments
-  ├─ Effect RPC handler
-  ├─ DurableExecution
-  │   └─ RuntimeStore → Durable Object storage
-  └─ AgentService
-      ├─ SessionStore → Durable Object storage
-      ├─ native Workers AI LanguageModel
-      └─ typed Effect Toolkit
+       ├─ hibernatable WebSocket adapter + versioned attachments
+       ├─ @chemistry/agent-runtime DurableExecution
+       │    └─ RuntimeStore → Durable Object storage
+       └─ AgentService
+            ├─ SessionStore → Durable Object storage
+            ├─ native Workers AI LanguageModel
+            └─ typed Effect Toolkit
 ```
 
-Protocol definitions live in:
+The Bun workspace is split by dependency direction:
 
-- [`src/shared/agent-protocol.ts`](src/shared/agent-protocol.ts) — branded identities, RPCs, events, runtime frames, and typed errors;
-- [`src/shared/runtime-protocol.ts`](src/shared/runtime-protocol.ts) — bounded frame codecs.
+- [`apps/website`](apps/website) — thin React/TanStack UI and same-origin route adapters;
+- [`apps/backend`](apps/backend) — Cloudflare/Alchemy composition roots and Durable Object adapters;
+- [`packages/contracts`](packages/contracts) — branded RPC, event, frame, and error schemas;
+- [`packages/client-runtime`](packages/client-runtime) — resumable browser transport and pure replay reducer;
+- [`packages/agent-runtime`](packages/agent-runtime) — provider-neutral agent and durable execution modules;
+- [`packages/chat-catalog`](packages/chat-catalog) — bounded catalog domain transitions.
 
-The full state-machine and semantics contract is in [`docs/runtime-architecture.md`](docs/runtime-architecture.md).
+The full state-machine and semantics contract is in [`docs/runtime-architecture.md`](docs/runtime-architecture.md). A checked architecture test rejects dependency-direction violations and imports that bypass workspace package interfaces.
 
 ## Runtime guarantees
 
@@ -82,6 +85,7 @@ The runtime still supports:
 
 | Resource                             |                 Default |
 | ------------------------------------ | ----------------------: |
+| Catalog conversations                |                     200 |
 | Queued submissions                   |                      16 |
 | Client frame / durable event payload |             64 / 60 KiB |
 | Events / encoded bytes per stream    |         2,048 / 128 KiB |
@@ -116,11 +120,12 @@ bun install
 bun run dev       # local Alchemy environment
 bun run deploy    # Cloudflare deployment
 bun run destroy   # remove deployed resources
+bun run ci:provision # one-time GitHub Actions credential bootstrap
 ```
 
 Local development pins the Website to `http://localhost:1337` and `AgentBackend` to `http://localhost:1338`. Because the local Website service-binding proxy cannot tunnel WebSocket upgrades, the browser adapter connects directly to port 1338 on localhost; deployed builds remain same-origin through `/ws`.
 
-In the UI, choose a session, update durable memory, and submit a turn. The runtime panel displays connection state, stream ID, sequence, operation/checkpoint, recovery attempt, and terminal reason. Reload or disconnect during a turn to exercise cursor replay.
+Opening `/` durably creates a chat and redirects to `/chat/:chatId`. Use the responsive sidebar to create or reopen recent conversations. The normal UI intentionally hides runtime diagnostics, context, and compaction controls while preserving those typed backend capabilities.
 
 ## Verification
 
@@ -134,7 +139,7 @@ bun run test:browser
 npx react-doctor@latest --verbose --scope changed --include-untracked
 ```
 
-The deterministic suite covers protocol bounds, persist-before-publish sequencing, replay races, cursor deduplication, durable FIFO ordering, duplicate admission, stale-owner fencing, partial continuation, transcript/runtime crash windows, stalls, OOM/reset and recovery budgets, terminal replay, retention, migration, client reload reconstruction, and prior message/context/tool/compaction behavior. The Playwright suite starts or reuses `bun run dev`, sends `hi` through the actual React UI, requires non-empty model text, observes browser WebSocket frames, requires live `StreamAck` traffic with no protocol or console transport error, waits for a completed terminal, and verifies the durable transcript. A second browser test requires the configured model to complete `lookup_project_fact` with typed `ToolCall` and `ToolResult` events plus a non-empty final answer.
+The deterministic suite covers package boundaries, catalog bounds/title/recency semantics, protocol bounds, persist-before-publish sequencing, replay races, cursor deduplication, durable FIFO ordering, duplicate admission, stale-owner fencing, partial continuation, transcript/runtime crash windows, stalls, recovery budgets, terminal replay, retention, migration, Markdown, client reload reconstruction, and message/context/tool/compaction behavior. Playwright drives the real React UI and browser WebSocket path: `/` creation and canonical redirect, a non-empty `hi` turn with `StreamAck` traffic and no transport error, transcript durability across reload, New chat, ordered/titled history and switching, desktop sidebar collapse, typed tool activity, recoverable query-error states, and mobile message submission/history navigation.
 
 Credentialed Cloudflare chaos verification:
 
@@ -145,21 +150,42 @@ bun run test:e2e
 
 The live suite deploys with Alchemy, exercises native Workers AI and RPC controls, ACKs every replay/live event with the browser protocol, disconnects mid-stream and resumes from a cursor, proves same-socket attachment wake after Hibernation API auto-responses, and performs two Worker source-hash updates around a controlled compile-time fault deployment. That fault deployment persists a deterministic partial and aborts its old isolate by alarm; the recovery deployment must continue it through a new native Workers AI call under a new generation. The baseline gate is `false`, and the test restores the source file after each deployment. The suite verifies one coherent terminal/transcript and destroys the stack in `afterAll`.
 
+## CI/CD
+
+[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) runs credential-free formatting, lint, strict types, deterministic tests, and production builds for every pull request and `main` push. Trusted pushes to `main` then run the browser suite and credentialed Cloudflare chaos suite before deploying the `prod` stage. Production runs are serialized and cannot bypass either verification gate; Playwright diagnostics are retained when browser verification fails.
+
+Deployments use `Cloudflare.state()` so independent GitHub runners share encrypted infrastructure state. Credentialed jobs require these repository Actions secrets:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+Provision them once from a trusted workstation:
+
+```bash
+alchemy login --profile admin # Cloudflare token-management access + GitHub repo access
+bun run ci:provision
+```
+
+[`stacks/github.ts`](stacks/github.ts) mints a scoped account token and writes both values directly to `peterje/chemistry` as encrypted GitHub Actions secrets. The admin profile is only for this bootstrap/rotation stack; normal application deploys use the narrower generated token. The generated token permits Workers scripts, account settings needed for workers.dev, and the Secrets Store access required by Alchemy's remote state store. Pull-request jobs deliberately receive no Cloudflare credentials and never deploy untrusted code.
+
+Before enabling automatic production deployment, protect `main` and require the **Verify** job. Optionally add reviewers to the GitHub `production` environment for a manual approval gate after all tests pass.
+
 Evidence is preserved in [`verification/`](verification/):
 
 - [`install.log`](verification/install.log)
 - [`local-checks.log`](verification/local-checks.log)
+- [`browser.log`](verification/browser.log)
 - [`react-doctor.log`](verification/react-doctor.log)
 - [`runtime-fault-matrix.md`](verification/runtime-fault-matrix.md)
 - [`runtime-design-review.md`](verification/runtime-design-review.md)
 - [`leakage-audit.log`](verification/leakage-audit.log)
-- [`live-chaos.log`](verification/live-chaos.log)
+- [`live-e2e.log`](verification/live-e2e.log)
 - [`REPORT.md`](verification/REPORT.md)
 
 ## Cloudflare composition boundaries
 
-Raw Cloudflare values and transport bridges are confined to infrastructure and adapter modules: `alchemy.run.ts`, route proxies, `agent-backend.ts`, `agent-durable-object.ts`, both Durable Object stores, and `runtime-websocket-adapter.ts`. Browser-native WebSocket handling is confined to `resumable-agent-socket.ts`. Domain and application modules depend on Effect Services, Layers, Schemas, Streams, and typed errors. `AgentBackend` has a workers.dev URL solely so the credentialed suite can test the DO transport directly as well as through the Website service binding.
+Raw Cloudflare values and transport bridges are confined to `alchemy.run.ts`, `apps/backend` composition/storage/socket adapters, and the two website proxy routes. Browser-native WebSocket handling is confined to `packages/client-runtime`. Inner workspace packages depend on application-owned Effect interfaces and shared schemas, never Cloudflare bindings. `AgentBackend` has a workers.dev URL solely so local WebSockets and the credentialed suite can exercise the Durable Object transport directly.
 
 ## Scope limits
 
-This is behavioral parity for the core runtime primitives, not full Think compatibility. It intentionally omits scheduled tasks, subagents, detached tools, MCP, channels, voice, search, branching, client tools/HITL beyond a generic parked checkpoint, authentication, production tenancy/quotas, and Cloudflare Workflows as the execution substrate.
+This is behavioral parity for the core runtime primitives, not full Think compatibility. It intentionally omits scheduled tasks, subagents, detached tools, MCP, channels, voice, chat search/rename/delete/archive, attachments, message editing/regeneration, branching, client tools/HITL beyond a generic parked checkpoint, authentication, production tenancy/quotas, and Cloudflare Workflows as the execution substrate.

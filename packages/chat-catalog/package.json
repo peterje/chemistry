@@ -1,0 +1,13 @@
+{
+  "name": "@chemistry/chat-catalog",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./chat-catalog": "./src/chat-catalog.ts"
+  },
+  "dependencies": {
+    "@chemistry/contracts": "workspace:*",
+    "effect": "4.0.0-rc.110"
+  }
+}

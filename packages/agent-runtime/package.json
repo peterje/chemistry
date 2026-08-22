@@ -1,0 +1,26 @@
+{
+  "name": "@chemistry/agent-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./agent-service": "./src/agent-service.ts",
+    "./agent-service-live": "./src/agent-service-live.ts",
+    "./agent-toolkit": "./src/agent-toolkit.ts",
+    "./agent-turn-executor-live": "./src/agent-turn-executor-live.ts",
+    "./chat-compaction": "./src/chat-compaction.ts",
+    "./conversation": "./src/conversation.ts",
+    "./durable-execution": "./src/durable-execution.ts",
+    "./message-id-source": "./src/message-id-source.ts",
+    "./replay-handoff": "./src/replay-handoff.ts",
+    "./runtime-id-source": "./src/runtime-id-source.ts",
+    "./runtime-state": "./src/runtime-state.ts",
+    "./runtime-store": "./src/runtime-store.ts",
+    "./session-store": "./src/session-store.ts",
+    "./turn-executor": "./src/turn-executor.ts"
+  },
+  "dependencies": {
+    "@chemistry/contracts": "workspace:*",
+    "effect": "4.0.0-rc.110"
+  }
+}
