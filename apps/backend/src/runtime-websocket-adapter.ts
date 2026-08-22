@@ -281,6 +281,19 @@ const buildRuntimeWebSocketAdapter = Effect.fn("RuntimeWebSocketAdapter.make")(f
     }
 
     const completedTerminal = yield* runtime.terminal(attachment.sessionId, selectedStreamId);
+    if (
+      completedTerminal?.status === "completed" &&
+      frame.afterSequence > completedTerminal.sequence
+    ) {
+      replayGates.delete(attachment.connectionId);
+      yield* protocolError(
+        socket,
+        "stale-stream",
+        `Replay cursor ${frame.afterSequence} exceeds durable sequence ${completedTerminal.sequence}`,
+        false,
+      );
+      return;
+    }
     if (completedTerminal?.status === "completed") {
       replayGates.delete(attachment.connectionId);
       yield* send(
