@@ -911,6 +911,36 @@ describe("Effect-native durable execution", () => {
       }),
     ));
 
+  test("accepts a token-chunked 500-word response under the default stream budget", () =>
+    run(
+      Effect.gen(function* () {
+        const runtime = yield* DurableExecution;
+        const turns = yield* TurnExecutorTest;
+        const store = yield* RuntimeStoreTest;
+        const sessionId = SessionId.make("runtime-500-word-response");
+        const responseEvents = Array.from({ length: 500 }, () => [text("lorem"), text(" ")]).flat();
+        yield* turns.setEvents(responseEvents);
+        const admission = yield* runtime.admit(
+          sessionId,
+          "write me a 500 word lorem ipsum",
+          SubmissionId.make("submission-500-word-response"),
+        );
+
+        yield* runtime.run(sessionId, admission.operation.operationId).pipe(Stream.runDrain);
+
+        const replay = yield* runtime.replay(sessionId, admission.operation.streamId, -1);
+        const persisted = yield* store.inspect(sessionId);
+        const persistedStream = Option.isSome(persisted)
+          ? persisted.value.streams.find(
+              (candidate) => candidate.streamId === admission.operation.streamId,
+            )
+          : undefined;
+        expect(replay.status).toBe("completed");
+        expect(replay.events).toHaveLength(responseEvents.length);
+        expect(persistedStream?.encodedBytes).toBeGreaterThan(128 * 1_024);
+      }),
+    ));
+
   test("rejects a stream that crosses its cumulative byte budget", () =>
     Effect.runPromise(
       Effect.gen(function* () {

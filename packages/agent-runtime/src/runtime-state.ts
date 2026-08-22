@@ -59,8 +59,10 @@ export const defaultRuntimeLimits: RuntimeLimits = {
   maxQueuedTurns: 16,
   maxEventsPerStream: 2_048,
   maxEventBytes: 60 * 1_024,
-  maxStreamBytes: 128 * 1_024,
-  maxRetainedStreams: 8,
+  // An active stream plus two maximum-sized terminal streams remains below
+  // SQLite Durable Object storage's 2 MiB value limit with metadata headroom.
+  maxStreamBytes: 512 * 1_024,
+  maxRetainedStreams: 2,
   completedStreamRetentionMs: 24 * 60 * 60 * 1_000,
   leaseDurationMs: 30_000,
   maxRecoveryAttempts: 5,
