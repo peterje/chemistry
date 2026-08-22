@@ -20,6 +20,7 @@ describe("shared AgentRpcs schema and NDJSON serialization", () => {
   test("decodes branded payloads and rejects malformed session ids", () => {
     expect([...AgentRpcs.requests.keys()]).toEqual([
       "getSession",
+      "getRuntime",
       "updateContext",
       "sendMessage",
       "compactSession",

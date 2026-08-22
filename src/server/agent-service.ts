@@ -6,9 +6,11 @@ import type {
   AgentRpcError,
   AgentStreamEvent,
   CompactionResult,
+  MessageId,
   SessionId,
   SessionSnapshot,
 } from "../shared/agent-protocol.ts";
+import type { PersistPartialInput, TurnExecutionInput } from "./turn-executor.ts";
 
 /** Runtime policy controlling bounded inference and compaction. */
 export interface AgentConfiguration {
@@ -41,6 +43,15 @@ export interface AgentServiceOperations {
     sessionId: SessionId,
     prompt: string,
   ) => Stream.Stream<AgentStreamEvent, AgentRpcError>;
+  /** Execute one runtime-owned turn with deterministic transcript identities. */
+  readonly runTurn: (input: TurnExecutionInput) => Stream.Stream<AgentStreamEvent, AgentRpcError>;
+  /** Idempotently persist a reconstructed partial assistant response. */
+  readonly persistPartial: (input: PersistPartialInput) => Effect.Effect<void, AgentRpcError>;
+  /** Check whether one deterministic assistant message is already durable. */
+  readonly hasAssistantMessage: (
+    sessionId: SessionId,
+    assistantMessageId: MessageId,
+  ) => Effect.Effect<boolean, AgentRpcError>;
   /** Compact eligible history on demand. */
   readonly compactSession: (sessionId: SessionId) => Effect.Effect<CompactionResult, AgentRpcError>;
 }

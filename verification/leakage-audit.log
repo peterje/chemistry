@@ -1,18 +1,68 @@
-$ rg -n Cloudflare runtime references
-src/server/durable-object-session-store.ts:20:    const state = yield* Cloudflare.DurableObjectState;
+$ raw Cloudflare/runtime boundaries
+alchemy.run.ts:2:import * as Cloudflare from "alchemy/Cloudflare";
+alchemy.run.ts:7:export class Website extends Cloudflare.Website.Vite<Website>()("Website", {
+alchemy.run.ts:17:export type WebsiteEnv = Cloudflare.InferEnv<typeof Website>;
+alchemy.run.ts:23:    providers: Cloudflare.providers(),
 src/routes/rpc.ts:2:import { env } from "cloudflare:workers";
-src/routes/rpc.ts:8:      ANY: ({ request }) => env.BACKEND.fetch(request),
+src/routes/ws.ts:2:import { env } from "cloudflare:workers";
 src/env.d.ts:3:declare module "cloudflare:workers" {
+src/server/durable-object-runtime-store.ts:1:import * as Cloudflare from "alchemy/Cloudflare";
+src/server/durable-object-runtime-store.ts:24:    const state = yield* Cloudflare.DurableObjectState;
+src/server/durable-object-session-store.ts:1:import * as Cloudflare from "alchemy/Cloudflare";
+src/server/durable-object-session-store.ts:20:    const state = yield* Cloudflare.DurableObjectState;
+src/server/agent-backend.ts:1:import * as Cloudflare from "alchemy/Cloudflare";
+src/server/agent-backend.ts:21:export default class AgentBackend extends Cloudflare.RpcWorker<AgentBackend>()(
+src/server/agent-durable-object.ts:1:import * as Cloudflare from "alchemy/Cloudflare";
+src/server/agent-durable-object.ts:68:export default class AgentSession extends Cloudflare.DurableObject<AgentSession>()(
+src/server/agent-durable-object.ts:71:    const state = yield* Cloudflare.DurableObjectState;
+src/server/agent-durable-object.ts:72:    const ai = yield* Cloudflare.Workers.AI();
+src/server/agent-durable-object.ts:250:  }).pipe(Effect.provide(Cloudflare.Workers.AIBinding)),
+src/server/runtime-websocket-adapter.ts:1:import * as Cloudflare from "alchemy/Cloudflare";
+src/server/runtime-websocket-adapter.ts:2:import type { WebSocket as AlchemyWebSocket } from "alchemy/Cloudflare";
+src/server/runtime-websocket-adapter.ts:83:  const state = yield* Cloudflare.DurableObjectState;
+src/server/runtime-websocket-adapter.ts:418:    const [response, socket] = yield* Cloudflare.upgrade();
 
-$ rg -n Promise/fetch/env reads
+$ raw transport and environment boundaries
+src/routes/ws.ts:8:      GET: ({ request }) => env.BACKEND.fetch(request),
 src/routes/rpc.ts:8:      ANY: ({ request }) => env.BACKEND.fetch(request),
+src/client/resumable-agent-socket.ts:56:    const socket = new WebSocket(url);
+src/server/runtime-websocket-adapter.ts:94:    new WebSocketRequestResponsePair(keepAliveRequest, keepAliveResponse),
+src/server/agent-backend.ts:34:        stub.fetch(HttpServerRequest.fromClientRequest(request)).pipe(
+src/server/agent-backend.ts:101:          return yield* sessions.getByName(decoded.success).fetch(request);
 
-$ rg unchecked any forms in all source
+$ lowercase any forms in checked TypeScript (case-sensitive)
 
-$ rg non-const assertions/casts in all source (imports excluded)
+$ assertion-like as tokens (all results are import aliases or prose; oxlint rejects casts)
+test/runtime-protocol.test.ts:57:  test("rejects malformed, stale-shaped, and oversized frames as typed errors", () =>
+test/live.e2e.test.ts:21:  type RuntimeServerFrame as RuntimeServerFrameType,
+test/live.e2e.test.ts:22:  type SessionId as SessionIdType,
+test/support/runtime-store-test-layer.ts:26:/** Test-only service backed by the same object as {@link RuntimeStore}. */
+test/support/durable-runtime-test-layers.ts:47:/** Test-only service backed by the same object as {@link TurnExecutor}. */
+src/client/resumable-agent-socket.ts:8:  type SubmissionId as SubmissionIdType,
+src/server/agent-turn-executor-live.ts:9:/** Adapter Layer exposing the existing model conversation module as a durable turn executor. */
+src/server/runtime-id-source.ts:10:  type BootId as BootIdType,
+src/server/runtime-id-source.ts:11:  type ConnectionId as ConnectionIdType,
+src/server/runtime-id-source.ts:12:  type OperationId as OperationIdType,
+src/server/runtime-id-source.ts:13:  type StreamId as StreamIdType,
+src/server/runtime-id-source.ts:14:  type SubmissionId as SubmissionIdType,
+src/server/turn-executor.ts:46:  /** Execute one fresh or continuation model turn as typed domain events. */
+src/server/runtime-state.ts:14:  type BootId as BootIdType,
+src/server/runtime-state.ts:15:  type OperationId as OperationIdType,
+src/server/runtime-state.ts:16:  type SessionId as SessionIdType,
+src/server/durable-execution.ts:13:  type DurableStreamEvent as DurableStreamEventType,
+src/server/durable-execution.ts:31:  type RuntimeOperationRecord as RuntimeOperationRecordType,
+src/server/durable-execution.ts:32:  type RuntimeState as RuntimeStateType,
+src/server/durable-execution.ts:33:  type RuntimeStreamRecord as RuntimeStreamRecordType,
 
-$ rg non-null assertions
+$ non-null assertions
 
-$ rg TypeScript suppression directives
+$ TypeScript suppressions and module mocks
 
-$ find temporary or generated route trees
+$ likely hardcoded credentials
+
+$ generated route artifacts
+
+$ classification
+Cloudflare and raw transport matches are confined to infrastructure, route, storage, DO, WebSocket, and browser transport adapters.
+No lowercase any, non-null assertion, suppression, module mock, hardcoded credential, application process.env read, or generated route artifact was found.
+The assertion-like matches are prose or import type aliases, not expression casts; oxlint passed with anti-slop assertion rules enabled.

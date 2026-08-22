@@ -1,59 +1,98 @@
-# Alchemy Effect Agent
+# Chemistry: Effect-native Cloudflare agent runtime
 
-A standalone Think-inspired agent demo built with Alchemy 2, Effect 4, and Cloudflare. The same Effect RPC contract is imported by the React browser client, the private Worker, and the per-session Durable Object.
+Chemistry is a standalone agent runtime built with Alchemy 2, Effect 4, Cloudflare Durable Objects, native Workers AI, Effect RPC, and React. It demonstrates a deliberately small set of Think-inspired **runtime guarantees** without copying Think's wire format or public API.
 
-The implemented surface is deliberately narrow:
+The runtime now provides:
 
-- message sending over a typed NDJSON stream;
-- durable system and memory context;
-- schema-defined tool calling with a bounded agent loop;
-- non-destructive chat compaction.
+- typed hibernatable WebSockets per durable session;
+- persist-before-publish event streams with cursor replay;
+- race-free stored-replay-to-live handoff;
+- checkpointed, generation-fenced durable operations;
+- bounded FIFO turn admission and submission deduplication;
+- bounded recovery after stalls, hibernation, isolate loss, or redeploy;
+- transcript-level Workers AI continuation after iterator loss;
+- React reconnect, replay, reconstruction, and runtime diagnostics;
+- Effect RPC controls for transcript, context, compaction, streaming compatibility, and runtime snapshots.
 
-It does **not** depend on `@cloudflare/think`, the Cloudflare Agents SDK, the Vercel AI SDK, or a third-party model API.
+It does **not** depend on `@cloudflare/think`, the Cloudflare Agents SDK, the Vercel AI SDK, or any third-party model API.
 
 ## Architecture
 
 ```text
-React + @effect/atom-react
-  │  shared AgentRpcs schemas; NDJSON over /rpc
-  ▼
+React
+  ├─ ResumableAgentSocket ─ typed JSON /ws ─┐
+  └─ Effect Atom RPC ─── NDJSON /rpc ───────┤
+                                             ▼
 TanStack Start Website Worker
-  │  private BACKEND service binding
-  ▼
-Cloudflare.Workers.RpcWorker
-  │  AgentSession.getByName(sessionId)
-  ▼
-Cloudflare.RpcDurableObject (one instance per session)
-  ├─ AgentService (Effect Context service)
-  ├─ SessionStore (Durable Object storage adapter)
-  ├─ Effect LanguageModel (native Workers AI binding)
-  └─ Effect Tool / Toolkit handlers
+  └─ BACKEND service binding
+       ▼
+AgentBackend RpcWorker
+  └─ AgentSession.getByName(sessionId)
+       ▼
+AgentSession Durable Object (one ordering authority per session)
+  ├─ hibernatable WebSocket adapter + schema-versioned attachments
+  ├─ Effect RPC handler
+  ├─ DurableExecution
+  │   └─ RuntimeStore → Durable Object storage
+  └─ AgentService
+      ├─ SessionStore → Durable Object storage
+      ├─ native Workers AI LanguageModel
+      └─ typed Effect Toolkit
 ```
 
-`src/shared/agent-protocol.ts` is the protocol source of truth. It contains branded IDs, all wire records and variants, typed errors, stream events, and `AgentRpcs`. No browser/server protocol types are duplicated.
+Protocol definitions live in:
 
-Cloudflare values are confined to composition and adapter modules:
+- [`src/shared/agent-protocol.ts`](src/shared/agent-protocol.ts) — branded identities, RPCs, events, runtime frames, and typed errors;
+- [`src/shared/runtime-protocol.ts`](src/shared/runtime-protocol.ts) — bounded frame codecs.
 
-- `alchemy.run.ts`
-- `src/routes/rpc.ts`
-- `src/server/agent-backend.ts`
-- `src/server/agent-durable-object.ts`
-- `src/server/durable-object-session-store.ts`
+The full state-machine and semantics contract is in [`docs/runtime-architecture.md`](docs/runtime-architecture.md).
 
-The application service and conversation/compaction modules depend on Effect services and domain values, not `Env` or raw bindings.
+## Runtime guarantees
 
-## Think capability mapping
+### Connection and replay
 
-| Think capability | Effect / Alchemy implementation                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Message Sending  | `RpcSchema.Stream(AgentStreamEvent, AgentRpcError)` crosses browser → Website → RPC Worker → RPC Durable Object. `AgentServiceLive` consumes native `LanguageModel.streamText`, emits each assistant text delta immediately, persists role-correct response messages at round completion, and finishes with a durable completion frame. The composer renders the accumulating assistant answer under **ASSISTANT · LIVE** before the snapshot refresh. |
-| Context          | `AgentContext` contains system instructions and mutable session memory. It is stored with the session and assembled into system messages on every inference request. The UI reads and updates it through Atom RPC.                                                                                                                                                                                                                                     |
-| Tool calling     | `LookupProjectFact` is an Effect `Tool`; `AgentToolkit` supplies its schema; `AgentToolkitLive` supplies its deterministic handler. The application performs at most five model/tool rounds and returns `ToolLoopLimitExceeded` when the bound is exhausted.                                                                                                                                                                                           |
-| Chat Compaction  | `buildCompactionPlan` selects a safe old range, never bisecting a tool call/result/final-answer interaction. Workers AI summarizes that range. The summary is persisted as an overlay while raw messages remain unchanged. Model prompts use the newest summary plus a six-message full-fidelity tail.                                                                                                                                                 |
+A socket upgrade is accepted through Cloudflare's Hibernation API. The server stores a versioned attachment and sends `ResumeProbe`; the client responds with `ResumeAck(streamId, afterSequence)`. The server parks live events before waiting for the ACK, drains durable backlog, deduplicates overlap through one high-water cursor, drains parked events, then sends `ResumeComplete`. A typed fixed keepalive pair is registered with Cloudflare's WebSocket auto-response facility, so browser liveness traffic keeps the edge connection open without waking the Durable Object.
 
-### Why the transcript store is explicit
+Events use a per-stream sequence beginning at zero. Each event is durably appended before it can be published. Cursor replay returns only events after the acknowledged sequence. Gaps force reconnect/replay rather than silent rendering.
 
-Alchemy includes `Cloudflare.AI.DurableObjectChatPersistence`, a good direct backing for Effect `Chat.layerPersisted` when one persisted `Prompt` is the complete record. This demo must preserve an immutable raw transcript **and** maintain replaceable model-visible summary overlays. Overwriting a single persisted `Chat.history` would destroy that distinction, so the authoritative store is the narrow `SessionStore` port implemented by `DurableObjectSessionStore`. Effect `Prompt`, `LanguageModel`, `Tool`, `Toolkit`, Services, Layers, Streams, RPC, and Schema remain native end to end.
+### Durable execution and FIFO turns
+
+`DurableExecution` hides operation journals, stream records, checkpoints, leases, generations, recovery incidents, alarms, and cleanup. Admission is durable and keyed by a client submission ID. Duplicate submissions converge on the same operation. One session Durable Object owns a bounded FIFO and executes at most one active turn.
+
+Every producer mutation includes its generation. A wake from another boot interrupts the old owner, and stale appends are rejected before publication.
+
+### Recovery
+
+Recovery classifies interrupted work as pre-stream retry, partial continuation, terminal no-op, parked work, or unrecoverable work. Attempts, no-progress, total work, memory-reset strikes, leases, stalls, alarms, retained streams, and reconnects all have finite bounds.
+
+Workers AI does not expose a durable iterator cursor. After isolate loss, Chemistry reconstructs the safe partial and starts a new native Workers AI call from a transcript-level continuation prompt. This is **not** byte-exact provider resume. Durable phases are at-least-once; arbitrary external effects are not claimed to be exactly once.
+
+### Existing agent capabilities
+
+The runtime still supports:
+
+- progressive native Workers AI responses;
+- durable editable system prompt and memory;
+- schema-defined `lookup_project_fact` tool calls with a five-step bound;
+- immutable raw transcript history;
+- non-destructive summary overlays and tool-safe compaction boundaries;
+- session isolation by named Durable Object.
+
+## Bounded defaults
+
+| Resource                             |                 Default |
+| ------------------------------------ | ----------------------: |
+| Queued submissions                   |                      16 |
+| Client frame / durable event payload |             64 / 60 KiB |
+| Events / encoded bytes per stream    |         2,048 / 128 KiB |
+| Replay handoff buffer                |              256 events |
+| Retained terminal streams            |                       8 |
+| Completed-stream grace               |                24 hours |
+| Reconnect attempts / maximum delay   |          8 / 10 seconds |
+| Recovery attempts / work units       |               5 / 1,024 |
+| Memory-reset strikes                 |                       3 |
+| Lease / stable-state timeout         | 30 seconds / 30 seconds |
+| Inference stall watchdog             |              45 seconds |
 
 ## Requirements
 
@@ -61,83 +100,61 @@ Alchemy includes `Cloudflare.AI.DurableObjectChatPersistence`, a good direct bac
 - a Cloudflare account with Workers AI access
 - Cloudflare authentication through `alchemy login` or `CLOUDFLARE_API_TOKEN`
 
-No OpenAI, Anthropic, or other provider API key is used.
-
-## Install
-
-```bash
-bun install
-cp .env.example .env # optional model override
-```
-
-The project pins `alchemy@2.0.0-beta.72` and `effect@4.0.0-rc.110`, matching the APIs in the adjacent `../alchemy` reference checkout.
-
-## Run
-
-```bash
-# Local Alchemy development environment
-bun run dev
-
-# Deploy Website, private RPC Worker, Durable Object, and Workers AI binding
-bun run deploy
-
-# Remove deployed resources
-bun run destroy
-```
-
-The default model is:
+No OpenAI, Anthropic, or other model-provider key is used. The default model is:
 
 ```text
 @cf/meta/llama-3.3-70b-instruct-fp8-fast
 ```
 
-Override it with `WORKERS_AI_MODEL`. The value is read with Effect `Config` during Alchemy composition and bound into the runtime; application modules do not read environment variables directly.
+`WORKERS_AI_MODEL` can override it at the composition root through Effect `Config`.
 
-## Demo walkthrough
+## Install and run
 
-1. Open `demo-session`, or enter another valid session name. Different names map to isolated Durable Objects.
-2. Edit **Durable memory**, save it, then ask the agent to recall the fact.
-3. Ask: `Call lookup_project_fact with topic protocol, then answer using its result.` The live strip and durable transcript show the call and result.
-4. Send several longer turns. **Model context** shows raw versus model-visible message counts.
-5. Choose **Compact eligible history**. Raw messages remain; the overlay count increases and the model-visible count falls.
-6. Reload the page. Transcript, context, tool records, and compaction overlays rehydrate from Durable Object storage.
+```bash
+bun install
+bun run dev       # local Alchemy environment
+bun run deploy    # Cloudflare deployment
+bun run destroy   # remove deployed resources
+```
+
+In the UI, choose a session, update durable memory, and submit a turn. The runtime panel displays connection state, stream ID, sequence, operation/checkpoint, recovery attempt, and terminal reason. Reload or disconnect during a turn to exercise cursor replay.
 
 ## Verification
 
-Deterministic local tests use a real Effect `LanguageModel` service supplied by a fake provider Layer; they do not mock modules.
+Local verification:
 
 ```bash
+bun install --frozen-lockfile
 bun run check
+npx react-doctor@latest --verbose --scope changed --include-untracked
 ```
 
-This runs linting, typechecking, deterministic tests, and the production build. Lefthook runs the same verification before every commit after `bun install`.
+The deterministic suite covers protocol bounds, persist-before-publish sequencing, replay races, cursor deduplication, durable FIFO ordering, duplicate admission, stale-owner fencing, partial continuation, transcript/runtime crash windows, stalls, OOM/reset and recovery budgets, terminal replay, retention, migration, client reload reconstruction, and prior message/context/tool/compaction behavior.
 
-The live test deploys the complete stack, calls it with the shared `AgentRpcs` client, verifies all four capabilities against native Workers AI and Durable Object storage, and destroys the stack in `afterAll`:
+Credentialed Cloudflare chaos verification:
 
 ```bash
+alchemy login
 bun run test:e2e
 ```
 
-The live test is skipped during ordinary `bun test`; it runs only when `RUN_LIVE_E2E=1`, which the script sets.
+The live suite deploys with Alchemy, exercises native Workers AI and RPC controls, disconnects mid-stream and resumes from a cursor, proves same-socket attachment wake after Hibernation API auto-responses, and performs two Worker source-hash updates around a controlled compile-time fault deployment. That fault deployment persists a deterministic partial and aborts its old isolate by alarm; the recovery deployment must continue it through a new native Workers AI call under a new generation. The baseline gate is `false`, and the test restores the source file after each deployment. The suite verifies one coherent terminal/transcript and destroys the stack in `afterAll`.
 
-Auditable command output from the final verification is checked in under [`verification/`](verification/):
+Evidence is preserved in [`verification/`](verification/):
 
-- [`install.log`](verification/install.log) — frozen dependency installation;
-- [`local-checks.log`](verification/local-checks.log) — typecheck, deterministic tests (including RPC schema/NDJSON round-trips), production build, and React Doctor;
-- [`live-e2e.log`](verification/live-e2e.log) — credentialed Alchemy create, 11 live assertions through the shared client, and successful deletion of both deployed resources;
-- [`REPORT.md`](verification/REPORT.md) — requirement-to-evidence map and leakage-search classification.
+- [`install.log`](verification/install.log)
+- [`local-checks.log`](verification/local-checks.log)
+- [`react-doctor.log`](verification/react-doctor.log)
+- [`runtime-fault-matrix.md`](verification/runtime-fault-matrix.md)
+- [`runtime-design-review.md`](verification/runtime-design-review.md)
+- [`leakage-audit.log`](verification/leakage-audit.log)
+- [`live-chaos.log`](verification/live-chaos.log)
+- [`REPORT.md`](verification/REPORT.md)
 
-## Typed failure surface
+## Cloudflare composition boundaries
 
-Expected failures cross RPC as schemas:
-
-- `AgentPersistenceError`
-- `AgentInferenceError`
-- `AgentCompactionError`
-- `ToolLoopLimitExceeded`
-
-Raw storage, model-provider, and transport mechanics are classified at their owning adapter. Framework-level transport defects are converted to defects only in the private Worker proxy, where there is no truthful application recovery.
+Raw Cloudflare values and transport bridges are confined to infrastructure and adapter modules: `alchemy.run.ts`, route proxies, `agent-backend.ts`, `agent-durable-object.ts`, both Durable Object stores, and `runtime-websocket-adapter.ts`. Browser-native WebSocket handling is confined to `resumable-agent-socket.ts`. Domain and application modules depend on Effect Services, Layers, Schemas, Streams, and typed errors. `AgentBackend` has a workers.dev URL solely so the credentialed suite can test the DO transport directly as well as through the Website service binding.
 
 ## Scope limits
 
-This is capability parity for the four requested behaviors, not full Think compatibility. It intentionally omits resumable WebSockets, stream replay, cancellation/recovery incidents, FTS, branching, multi-agent orchestration, client tools, HITL approval, authentication, and production tenancy/retention policy.
+This is behavioral parity for the core runtime primitives, not full Think compatibility. It intentionally omits scheduled tasks, subagents, detached tools, MCP, channels, voice, search, branching, client tools/HITL beyond a generic parked checkpoint, authentication, production tenancy/quotas, and Cloudflare Workflows as the execution substrate.

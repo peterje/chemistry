@@ -24,7 +24,11 @@ export default Alchemy.Stack(
     state: Alchemy.localState(),
   },
   Effect.gen(function* () {
+    const backend = yield* AgentBackend;
     const website = yield* Website;
-    return { websiteUrl: website.url.as<string>() };
+    return {
+      backendUrl: backend.url.as<string>(),
+      websiteUrl: website.url.as<string>(),
+    };
   }),
 );

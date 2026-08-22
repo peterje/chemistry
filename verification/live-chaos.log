@@ -1,0 +1,125 @@
+$ RUN_LIVE_E2E=1 bun test test/live.e2e.test.ts
+bun test v1.3.14 (0d9b296a)
+
+test/live.e2e.test.ts:
+Plan: 2 to create
+[AgentBackend] create
+[AgentBackend/AI] create
+[AgentBackend/AgentSession] create
+[Website] create
+[Website/BACKEND] create
+
+[Website] pre-creating
+[AgentBackend] pre-creating
+[AgentBackend] Pre-creating worker...
+[Website] Pre-creating worker...
+[Website] pending
+[AgentBackend] pending
+[AgentBackend] creating
+[AgentBackend] Uploading worker (561.73 KB) ...
+[AgentBackend] Enabling workers.dev subdomain...
+[Website] creating
+[AgentBackend] created
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 246ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 191ms[39m
+[Website] Checking assets...
+[Website] Uploaded 0 of 4 assets...
+[Website] Uploaded 2 of 4 assets...
+[Website] Uploaded 3 of 4 assets...
+[Website] Uploaded 4 of 4 assets...
+[Website] Uploading worker (1.73 MB) ...
+[Website] Enabling workers.dev subdomain...
+[Website] created
+[AgentBackend] created
+[Website] created
+
+Done: 4 succeeded
+(pass) verifies messages, context, tools, compaction, and runtime snapshots through Effect RPC [6310.21ms]
+[00:53:28.599] INFO (#890): Reconnect replay terminal evidence {
+  sequence: 1,
+  generation: 1,
+}
+[00:53:48.993] INFO (#890): Hibernation auto-response evidence {
+  keepAlive: 0,
+}
+[00:54:09.009] INFO (#890): Hibernation auto-response evidence {
+  keepAlive: 1,
+}
+[00:54:29.033] INFO (#890): Hibernation auto-response evidence {
+  keepAlive: 2,
+}
+[00:54:44.119] INFO (#890): Hibernation wake evidence {
+  beforeBootId: "boot-0e785c26-053d-4c22-bc5e-b047c5e8fa0c",
+  afterBootId: "boot-6ff0d5e7-8024-4bfa-bc01-405e15b5fde9",
+}
+(pass) proves typed routing, reconnect replay, hibernation attachment wake, and RPC controls [80120.39ms]
+Plan: 2 to update
+[AgentBackend] update
+[Website] update
+
+[AgentBackend] pending
+[Website] pending
+[AgentBackend] updating
+[Website] updating
+[AgentBackend] Uploading worker (561.53 KB) ...
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 317ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 236ms[39m
+[Website] Checking assets...
+[AgentBackend] updated
+[Website] Uploading worker (1.73 MB) ...
+[Website] updated
+[AgentBackend] updated
+[Website] updated
+
+Done: 4 succeeded
+Plan: 2 to update
+[AgentBackend] update
+[Website] update
+
+[AgentBackend] pending
+[Website] pending
+[Website] updating
+[AgentBackend] updating
+[AgentBackend] Uploading worker (561.76 KB) ...
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 290ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 243ms[39m
+[Website] Checking assets...
+[Website] Uploading worker (1.73 MB) ...
+[AgentBackend] updated
+[Website] updated
+[AgentBackend] updated
+[Website] updated
+
+Done: 4 succeeded
+[00:55:18.859] INFO (#1012): Redeploy terminal evidence {
+  status: "completed",
+  generation: 2,
+  attempt: 1,
+  recoveryWork: 75,
+  reason: null,
+}
+(pass) forces a mid-turn Worker redeploy and converges through transcript continuation [32563.30ms]
+Plan: 2 to delete
+[AgentBackend] delete
+[AgentBackend/AI] delete
+[AgentBackend/AgentSession] delete
+[Website] delete
+[Website/BACKEND] delete
+
+[Website] deleting
+[Website] deleted
+[AgentBackend] deleting
+[AgentBackend] deleted
+
+Done: 2 succeeded
+
+ 3 pass
+ 0 fail
+ 45 expect() calls
+Ran 3 tests across 1 file. [135.05s]

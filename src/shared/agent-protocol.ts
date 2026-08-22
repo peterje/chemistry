@@ -15,6 +15,46 @@ export const SessionId = Schema.NonEmptyString.check(
 /** The branded type decoded by {@link SessionId}. */
 export type SessionId = typeof SessionId.Type;
 
+/** A client-selected idempotency key for one logical turn submission. */
+export const SubmissionId = Schema.NonEmptyString.check(Schema.isMaxLength(128)).pipe(
+  Schema.brand("SubmissionId"),
+);
+
+/** The branded type decoded by {@link SubmissionId}. */
+export type SubmissionId = typeof SubmissionId.Type;
+
+/** A durable execution identifier assigned to one admitted operation. */
+export const OperationId = Schema.NonEmptyString.check(Schema.isMaxLength(128)).pipe(
+  Schema.brand("OperationId"),
+);
+
+/** The branded type decoded by {@link OperationId}. */
+export type OperationId = typeof OperationId.Type;
+
+/** A durable stream identifier assigned to one logical turn. */
+export const StreamId = Schema.NonEmptyString.check(Schema.isMaxLength(128)).pipe(
+  Schema.brand("StreamId"),
+);
+
+/** The branded type decoded by {@link StreamId}. */
+export type StreamId = typeof StreamId.Type;
+
+/** A hibernatable browser connection identifier. */
+export const ConnectionId = Schema.NonEmptyString.check(Schema.isMaxLength(128)).pipe(
+  Schema.brand("ConnectionId"),
+);
+
+/** The branded type decoded by {@link ConnectionId}. */
+export type ConnectionId = typeof ConnectionId.Type;
+
+/** A boot identifier proving which Durable Object isolate handled an event. */
+export const BootId = Schema.NonEmptyString.check(Schema.isMaxLength(128)).pipe(
+  Schema.brand("BootId"),
+);
+
+/** The branded type decoded by {@link BootId}. */
+export type BootId = typeof BootId.Type;
+
 /** A stable identifier for one stored transcript message. */
 export const MessageId = Schema.NonEmptyString.pipe(Schema.brand("MessageId"));
 
@@ -146,6 +186,170 @@ export const AgentStreamEvent = Schema.TaggedUnion({
 /** A decoded event in a streamed agent turn. */
 export type AgentStreamEvent = typeof AgentStreamEvent.Type;
 
+/** Lifecycle states exposed by one durable operation. */
+export const RuntimeOperationStatus = Schema.Literals([
+  "queued",
+  "running",
+  "interrupted",
+  "recovering",
+  "parked",
+  "completed",
+  "failed",
+]);
+
+/** A decoded durable-operation lifecycle state. */
+export type RuntimeOperationStatus = typeof RuntimeOperationStatus.Type;
+
+/** Explicit checkpoints from which a durable turn can be classified or resumed. */
+export const RuntimeCheckpoint = Schema.Literals([
+  "admitted",
+  "preparing",
+  "streaming",
+  "partial-persisted",
+  "parked",
+  "terminal",
+]);
+
+/** A decoded durable-operation checkpoint. */
+export type RuntimeCheckpoint = typeof RuntimeCheckpoint.Type;
+
+/** Public diagnostic summary for one durable operation. */
+export const RuntimeOperationSummary = Schema.Struct({
+  operationId: OperationId,
+  submissionId: SubmissionId,
+  streamId: StreamId,
+  status: RuntimeOperationStatus,
+  checkpoint: RuntimeCheckpoint,
+  generation: NonNegativeInt,
+  attempt: NonNegativeInt,
+  progress: NonNegativeInt,
+  recoveryWork: NonNegativeInt,
+  terminalReason: Schema.NullOr(Schema.String),
+  updatedAt: Schema.Number,
+}).annotate({ identifier: "RuntimeOperationSummary" });
+
+/** A decoded public durable-operation summary. */
+export interface RuntimeOperationSummary extends Schema.Schema.Type<
+  typeof RuntimeOperationSummary
+> {}
+
+/** Runtime diagnostics included in snapshots and resume probes. */
+export const RuntimeSnapshot = Schema.Struct({
+  bootId: BootId,
+  activeOperation: Schema.NullOr(RuntimeOperationSummary),
+  queueDepth: NonNegativeInt,
+  retainedStreamCount: NonNegativeInt,
+  recoveryAttempt: NonNegativeInt,
+  lastTerminalReason: Schema.NullOr(Schema.String),
+}).annotate({ identifier: "RuntimeSnapshot" });
+
+/** A decoded runtime diagnostic snapshot. */
+export interface RuntimeSnapshot extends Schema.Schema.Type<typeof RuntimeSnapshot> {}
+
+/** One append-before-publish event in a durable turn stream. */
+export const DurableStreamEvent = Schema.Struct({
+  streamId: StreamId,
+  operationId: OperationId,
+  sequence: NonNegativeInt,
+  event: AgentStreamEvent,
+  producedAt: Schema.Number,
+}).annotate({ identifier: "DurableStreamEvent" });
+
+/** A decoded durable stream event. */
+export interface DurableStreamEvent extends Schema.Schema.Type<typeof DurableStreamEvent> {}
+
+/** Browser-to-runtime frames accepted by the hibernatable WebSocket protocol. */
+export const RuntimeClientFrame = Schema.TaggedUnion({
+  ResumeAck: {
+    probeId: Schema.NonEmptyString,
+    streamId: Schema.NullOr(StreamId),
+    afterSequence: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(-1)),
+  },
+  SubmitTurn: {
+    submissionId: SubmissionId,
+    prompt: Schema.NonEmptyString.check(Schema.isMaxLength(32_000)),
+  },
+  StreamAck: {
+    streamId: StreamId,
+    sequence: NonNegativeInt,
+  },
+  Ping: {
+    nonce: Schema.NonEmptyString.check(Schema.isMaxLength(128)),
+  },
+  KeepAlive: {},
+});
+
+/** A decoded browser-to-runtime WebSocket frame. */
+export type RuntimeClientFrame = typeof RuntimeClientFrame.Type;
+
+/** Runtime-to-browser frames emitted by the hibernatable WebSocket protocol. */
+export const RuntimeServerFrame = Schema.TaggedUnion({
+  ResumeProbe: {
+    probeId: Schema.NonEmptyString,
+    connectionId: ConnectionId,
+    sessionId: SessionId,
+    activeStreamId: Schema.NullOr(StreamId),
+    latestSequence: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(-1)),
+    runtime: RuntimeSnapshot,
+  },
+  TurnAccepted: {
+    submissionId: SubmissionId,
+    operationId: OperationId,
+    streamId: StreamId,
+    queuePosition: NonNegativeInt,
+  },
+  StreamEvent: {
+    durableEvent: DurableStreamEvent,
+    replay: Schema.Boolean,
+  },
+  ResumeComplete: {
+    streamId: Schema.NullOr(StreamId),
+    throughSequence: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(-1)),
+  },
+  Recovering: {
+    operation: RuntimeOperationSummary,
+  },
+  StreamTerminal: {
+    streamId: StreamId,
+    operationId: OperationId,
+    status: Schema.Literals(["completed", "failed", "interrupted"]),
+    sequence: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(-1)),
+    generation: NonNegativeInt,
+    attempt: NonNegativeInt,
+    recoveryWork: NonNegativeInt,
+    reason: Schema.NullOr(Schema.String),
+  },
+  ProtocolError: {
+    code: Schema.Literals([
+      "invalid-frame",
+      "frame-too-large",
+      "stale-probe",
+      "stale-stream",
+      "queue-full",
+      "runtime-unavailable",
+    ]),
+    message: Schema.String,
+    recoverable: Schema.Boolean,
+  },
+  Pong: {
+    nonce: Schema.NonEmptyString.check(Schema.isMaxLength(128)),
+    bootId: BootId,
+  },
+  KeepAliveAck: {},
+});
+
+/** A decoded runtime-to-browser WebSocket frame. */
+export type RuntimeServerFrame = typeof RuntimeServerFrame.Type;
+
+/** A WebSocket frame failed shared protocol decoding or state validation. */
+export class AgentProtocolError extends Schema.TaggedError<AgentProtocolError>()(
+  "AgentProtocolError",
+  {
+    code: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
 /** A Durable Object storage operation failed. */
 export class AgentPersistenceError extends Schema.TaggedError<AgentPersistenceError>()(
   "AgentPersistenceError",
@@ -198,6 +402,12 @@ const getSession = Rpc.make("getSession", {
   error: AgentRpcError,
 });
 
+const getRuntime = Rpc.make("getRuntime", {
+  payload: { sessionId: SessionId },
+  success: RuntimeSnapshot,
+  error: AgentRpcError,
+});
+
 const updateContext = Rpc.make("updateContext", {
   payload: {
     sessionId: SessionId,
@@ -224,6 +434,7 @@ const compactSession = Rpc.make("compactSession", {
 /** Shared Effect RPC contract imported by browser, Worker, and Durable Object. */
 export class AgentRpcs extends RpcGroup.make(
   getSession,
+  getRuntime,
   updateContext,
   sendMessage,
   compactSession,

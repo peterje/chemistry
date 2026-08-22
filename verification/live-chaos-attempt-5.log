@@ -1,0 +1,199 @@
+$ RUN_LIVE_E2E=1 bun test test/live.e2e.test.ts
+bun test v1.3.14 (0d9b296a)
+
+test/live.e2e.test.ts:
+Plan: 2 to create
+[AgentBackend] create
+[AgentBackend/AI] create
+[AgentBackend/AgentSession] create
+[Website] create
+[Website/BACKEND] create
+
+[AgentBackend] pre-creating
+[Website] pre-creating
+[AgentBackend] Pre-creating worker...
+[Website] Pre-creating worker...
+[Website] pending
+[AgentBackend] pending
+[AgentBackend] creating
+[AgentBackend] Uploading worker (560.77 KB) ...
+[AgentBackend] Enabling workers.dev subdomain...
+[Website] creating
+[AgentBackend] created
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 305ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 229ms[39m
+[Website] Checking assets...
+[Website] Uploaded 0 of 4 assets...
+[Website] Uploaded 2 of 4 assets...
+[Website] Uploaded 3 of 4 assets...
+[Website] Uploaded 4 of 4 assets...
+[Website] Uploading worker (1.73 MB) ...
+[Website] Enabling workers.dev subdomain...
+[Website] created
+[AgentBackend] created
+[Website] created
+
+Done: 4 succeeded
+483 |   const serialization = yield* RpcSerialization.RpcSerialization;
+484 |   const isFramed = serialization.includesFraming;
+485 |   const httpClientError = cause => new RpcClientError({
+486 |     reason: HttpClientErrorSchema.fromHttpClientError(cause)
+487 |   });
+488 |   const protocolDefect = (message, cause) => new RpcClientError({
+                                                   ^
+error: RpcClientDefect: Error decoding HTTP response
+       _tag: "RpcClientError",
+ ~effect/rpc/RpcClientError: "~effect/rpc/RpcClientError",
+
+      at protocolDefect (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/unstable/rpc/RpcClient.js:488:46)
+      at ~effect/Utils/internal (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Utils.js:85:16)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:733:19)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+
+484 |   const isFramed = serialization.includesFraming;
+485 |   const httpClientError = cause => new RpcClientError({
+486 |     reason: HttpClientErrorSchema.fromHttpClientError(cause)
+487 |   });
+488 |   const protocolDefect = (message, cause) => new RpcClientError({
+489 |     reason: new RpcClientDefect({
+                  ^
+error: Error decoding HTTP response
+ _tag: "RpcClientDefect",
+
+      at protocolDefect (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/unstable/rpc/RpcClient.js:489:13)
+      at ~effect/Utils/internal (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Utils.js:85:16)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:733:19)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+
+ 96 |           const items = [];
+ 97 |           while (nlIndex !== -1) {
+ 98 |             if (isBufferSizeExceeded(nlIndex - position, maxBufferSize)) {
+ 99 |               failMaxBufferSize(maxBufferSize);
+100 |             }
+101 |             const item = JSON.parse(buffer.slice(position, nlIndex));
+                                    ^
+SyntaxError: JSON Parse error: Unrecognized token '<'
+      at decode (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/unstable/rpc/RpcSerialization.js:101:31)
+      at ~effect/Utils/internal (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Utils.js:85:16)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:731:22)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+(fail) verifies messages, context, tools, compaction, and runtime snapshots through Effect RPC [4637.83ms]
+105 |     Effect.timeout("90 seconds"),
+106 |     Effect.mapError(
+107 |       () => new LiveSocketFailure({ message: "Timed out waiting for runtime frame" }),
+108 |     ),
+109 |   );
+110 |   if (item._tag === "Failure") return yield* new LiveSocketFailure({ message: item.message });
+                                                   ^
+error: Runtime socket closed (1006): Connection ended
+ _tag: "LiveSocketFailure",
+
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/test/live.e2e.test.ts:110:46)
+      at ~effect/Effect/successCont (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:927:26)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at onExit (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1010:5)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1021:7)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:434:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at releaseTakers (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Queue.js:1479:5)
+      at runTasks (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:160:15)
+      at afterScheduled (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:150:10)
+(fail) proves typed routing, reconnect replay, hibernation attachment wake, and RPC controls [52357.00ms]
+Plan: 2 to update
+[AgentBackend] update
+[Website] update
+
+[AgentBackend] pending
+[Website] pending
+[AgentBackend] updating
+[Website] updating
+[AgentBackend] Uploading worker (560.57 KB) ...
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 242ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 180ms[39m
+[Website] Checking assets...
+[AgentBackend] updated
+[Website] Uploading worker (1.73 MB) ...
+[Website] updated
+[AgentBackend] updated
+[Website] updated
+
+Done: 4 succeeded
+Plan: 2 to update
+[AgentBackend] update
+[Website] update
+
+[AgentBackend] pending
+[Website] pending
+[Website] updating
+[AgentBackend] updating
+[AgentBackend] Uploading worker (560.80 KB) ...
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 220ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 207ms[39m
+[Website] Checking assets...
+[AgentBackend] updated
+[Website] Uploading worker (1.73 MB) ...
+[Website] updated
+[AgentBackend] updated
+[Website] updated
+
+Done: 4 succeeded
+[00:37:47.097] INFO (#2315): Redeploy terminal evidence {
+  status: "failed",
+  generation: 3,
+  attempt: 1,
+  recoveryWork: 128,
+  reason: "recovery-work-exhausted",
+}
+477 |         generation: result.terminal.generation,
+478 |         attempt: result.terminal.attempt,
+479 |         recoveryWork: result.terminal.recoveryWork,
+480 |         reason: result.terminal.reason,
+481 |       });
+482 |       expect(result.terminal.status).toBe("completed");
+                                           ^
+error: expect(received).toBe(expected)
+
+Expected: "completed"
+Received: "failed"
+
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/test/live.e2e.test.ts:482:38)
+      at ~effect/Effect/successCont (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:927:26)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:700:13)
+      at runTasks (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:160:15)
+      at afterScheduled (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:150:10)
+(fail) forces a mid-turn Worker redeploy and converges through transcript continuation [31647.90ms]
+Plan: 2 to delete
+[AgentBackend] delete
+[AgentBackend/AI] delete
+[AgentBackend/AgentSession] delete
+[Website] delete
+[Website/BACKEND] delete
+
+[Website] deleting
+[Website] deleted
+[AgentBackend] deleting
+[AgentBackend] deleted
+
+Done: 2 succeeded
+
+ 0 pass
+ 3 fail
+ 21 expect() calls
+Ran 3 tests across 1 file. [109.00s]
+error: script "test:e2e" exited with code 1

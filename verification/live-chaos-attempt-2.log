@@ -1,0 +1,144 @@
+$ RUN_LIVE_E2E=1 bun test test/live.e2e.test.ts
+bun test v1.3.14 (0d9b296a)
+
+test/live.e2e.test.ts:
+Plan: 2 to create
+[AgentBackend] create
+[AgentBackend/AI] create
+[AgentBackend/AgentSession] create
+[Website] create
+[Website/BACKEND] create
+
+[AgentBackend] pre-creating
+[Website] pre-creating
+[Website] Pre-creating worker...
+[AgentBackend] Pre-creating worker...
+[Website] pending
+[AgentBackend] pending
+[AgentBackend] creating
+[AgentBackend] Uploading worker (560.03 KB) ...
+[Website] creating
+[AgentBackend] created
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 343ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 207ms[39m
+[Website] Checking assets...
+[Website] Uploaded 0 of 4 assets...
+[Website] Uploaded 2 of 4 assets...
+[Website] Uploaded 3 of 4 assets...
+[Website] Uploaded 4 of 4 assets...
+[Website] Uploading worker (1.73 MB) ...
+[Website] Enabling workers.dev subdomain...
+[Website] created
+[AgentBackend] created
+[Website] created
+
+Done: 4 succeeded
+254 |       );
+255 |       const contextAnswer = contextEvents
+256 |         .filter(AgentStreamEvent.guards.TextDelta)
+257 |         .map((event) => event.delta)
+258 |         .join("");
+259 |       expect(contextAnswer).toContain(verificationCode);
+                                  ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "ORCHID-cf9981a7"
+Received: ""
+
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/test/live.e2e.test.ts:259:29)
+      at ~effect/Effect/successCont (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:927:26)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:434:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+(fail) verifies messages, context, tools, compaction, and runtime snapshots through Effect RPC [17940.86ms]
+105 |     Effect.timeout("90 seconds"),
+106 |     Effect.mapError(
+107 |       () => new LiveSocketFailure({ message: "Timed out waiting for runtime frame" }),
+108 |     ),
+109 |   );
+110 |   if (item._tag === "Failure") return yield* new LiveSocketFailure({ message: item.message });
+                                                   ^
+error: Runtime socket closed (1006): Connection ended
+ _tag: "LiveSocketFailure",
+
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/test/live.e2e.test.ts:110:46)
+      at ~effect/Effect/successCont (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:927:26)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at onExit (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1010:5)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1021:7)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:434:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at releaseTakers (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Queue.js:1479:5)
+      at runTasks (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:160:15)
+      at afterScheduled (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:150:10)
+(fail) proves typed routing, reconnect replay, hibernation attachment wake, and RPC controls [59262.89ms]
+Plan: 2 to update
+[AgentBackend] update
+[Website] update
+
+[Website] pending
+[AgentBackend] pending
+[Website] updating
+[AgentBackend] updating
+[AgentBackend] Uploading worker (560.07 KB) ...
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 254ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 317ms[39m
+[Website] Checking assets...
+[AgentBackend] updated
+[Website] Uploading worker (1.73 MB) ...
+[Website] updated
+[AgentBackend] updated
+[Website] updated
+
+Done: 4 succeeded
+447 |         ),
+448 |       );
+449 |       expect(redeployed.websiteUrl).toBe(websiteUrl);
+450 |
+451 |       const resumed = yield* resumeEventually(websiteUrl, sessionId, partialSequence);
+452 |       expect(resumed.probe.runtime.bootId).not.toBe(oldBootId);
+                                                     ^
+error: expect(received).not.toBe(expected)
+
+Expected: not "boot-047c5360-611d-4ce0-b76b-f9d17e299927"
+
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/test/live.e2e.test.ts:452:48)
+      at ~effect/Effect/successCont (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:927:26)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at onExit (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1010:5)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1021:7)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:434:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at releaseTakers (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Queue.js:1479:5)
+      at runTasks (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:160:15)
+      at afterScheduled (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:150:10)
+(fail) forces a mid-turn Worker redeploy and converges through transcript continuation [7650.05ms]
+Plan: 2 to delete
+[AgentBackend] delete
+[AgentBackend/AI] delete
+[AgentBackend/AgentSession] delete
+[Website] delete
+[Website/BACKEND] delete
+
+[Website] deleting
+[Website] deleted
+[AgentBackend] deleting
+[AgentBackend] deleted
+
+Done: 2 succeeded
+
+ 0 pass
+ 3 fail
+ 14 expect() calls
+Ran 3 tests across 1 file. [100.30s]
+error: script "test:e2e" exited with code 1

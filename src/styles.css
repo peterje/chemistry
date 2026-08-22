@@ -313,8 +313,55 @@ h2 {
   display: grid;
   gap: 1rem;
 }
-.control-card {
+.control-card,
+.runtime-card {
   padding: 1.4rem;
+}
+.runtime-card {
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+.runtime-card .card-heading {
+  display: flex;
+  gap: 1rem;
+  align-items: start;
+  justify-content: space-between;
+}
+.runtime-card .card-heading strong {
+  border: 1px solid var(--ink);
+  padding: 0.25rem 0.4rem;
+  font-family: "DM Mono", monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+.runtime-card .stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  margin: 1.2rem 0 0;
+}
+.runtime-card .stats-grid div {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.55rem;
+}
+.runtime-card .stats-grid dt {
+  color: var(--muted);
+  font-size: 0.67rem;
+  text-transform: uppercase;
+}
+.runtime-card .stats-grid dd {
+  overflow: hidden;
+  margin: 0.25rem 0 0;
+  font-family: "DM Mono", monospace;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.runtime-reason {
+  margin: 1rem 0 0;
+  color: var(--rust);
+  font-size: 0.78rem;
 }
 .control-card > p:not(.kicker) {
   color: var(--muted);

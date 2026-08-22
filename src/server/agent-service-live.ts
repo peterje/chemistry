@@ -16,6 +16,7 @@ import {
   TranscriptMessage,
   type AgentContext,
   type AgentRpcError,
+  type MessageId,
   type SessionId,
 } from "../shared/agent-protocol.ts";
 import { AgentService, defaultAgentConfiguration } from "./agent-service.ts";
@@ -23,6 +24,7 @@ import { AgentToolkit, AgentToolkitLive } from "./agent-toolkit.ts";
 import { buildCompactionPlan } from "./chat-compaction.ts";
 import {
   agentEventFromResponsePart,
+  assembleContinuationPrompt,
   assembleModelPrompt,
   compactionStats,
   estimateModelTokens,
@@ -33,6 +35,7 @@ import {
 } from "./conversation.ts";
 import { MessageIdSource } from "./message-id-source.ts";
 import { SessionStore, type StoredSession } from "./session-store.ts";
+import type { PersistPartialInput, TurnExecutionInput } from "./turn-executor.ts";
 
 const requiredFactTool = { tool: "lookup_project_fact" } as const;
 
@@ -154,30 +157,46 @@ export const AgentServiceLive = Layer.effect(
     const persistResponse = Effect.fn("AgentService.persistResponse")(function* (
       active: StoredSession,
       parts: ReadonlyArray<Response.AnyPart>,
+      preferredAssistantId?: MessageId,
     ) {
       const segments = yield* transcriptSegmentsFromResponse(parts);
-      const generatedMessages = yield* Effect.forEach(
-        segments,
-        Effect.fn("AgentService.persistResponseSegment")(function* (segment) {
-          const id = yield* ids.next();
-          const createdAt = yield* Clock.currentTimeMillis;
-          return TranscriptMessage.make({
-            id,
-            role: segment.role,
-            parts: segment.parts,
-            createdAt,
-          });
-        }),
-      );
-      const updated: StoredSession = {
-        ...active,
-        messages: [...active.messages, ...generatedMessages],
-      };
-      yield* store.save(updated);
+      let messages: ReadonlyArray<TranscriptMessage> = active.messages;
       let assistant: TranscriptMessage | undefined;
-      for (const message of generatedMessages) {
+      let availableAssistantId = preferredAssistantId;
+
+      for (const segment of segments) {
+        const createdAt = yield* Clock.currentTimeMillis;
+        if (segment.role === "assistant" && availableAssistantId !== undefined) {
+          const existing = messages.find((message) => message.id === availableAssistantId);
+          const message = TranscriptMessage.make({
+            id: availableAssistantId,
+            role: "assistant",
+            parts: existing === undefined ? segment.parts : [...existing.parts, ...segment.parts],
+            createdAt: existing?.createdAt ?? createdAt,
+          });
+          messages =
+            existing === undefined
+              ? [...messages, message]
+              : messages.map((candidate) =>
+                  candidate.id === availableAssistantId ? message : candidate,
+                );
+          assistant = message;
+          availableAssistantId = undefined;
+          continue;
+        }
+        const id = yield* ids.next();
+        const message = TranscriptMessage.make({
+          id,
+          role: segment.role,
+          parts: segment.parts,
+          createdAt,
+        });
+        messages = [...messages, message];
         if (message.role === "assistant") assistant = message;
       }
+
+      const updated: StoredSession = { ...active, messages };
+      yield* store.save(updated);
       return { session: updated, assistant };
     });
 
@@ -198,9 +217,10 @@ export const AgentServiceLive = Layer.effect(
       step: number,
       previousAssistant: TranscriptMessage | undefined,
       parts: ReadonlyArray<Response.AnyPart>,
+      preferredAssistantId: MessageId | undefined,
     ): Effect.Effect<Stream.Stream<AgentStreamEvent, AgentRpcError>, AgentRpcError> {
       return Effect.gen(function* () {
-        const persisted = yield* persistResponse(active, parts);
+        const persisted = yield* persistResponse(active, parts, preferredAssistantId);
         const assistant = persisted.assistant ?? previousAssistant;
         const calledTool = parts.some((part) => part.type === "tool-call");
 
@@ -213,7 +233,14 @@ export const AgentServiceLive = Layer.effect(
               }),
             );
           }
-          return streamRound(persisted.session, originalPrompt, step + 1, assistant);
+          return streamRound(
+            persisted.session,
+            originalPrompt,
+            step + 1,
+            assistant,
+            undefined,
+            "fresh",
+          );
         }
 
         if (assistant !== undefined) {
@@ -225,7 +252,7 @@ export const AgentServiceLive = Layer.effect(
           );
         }
 
-        const id = yield* ids.next();
+        const id = preferredAssistantId ?? (yield* ids.next());
         const createdAt = yield* Clock.currentTimeMillis;
         const emptyAssistant = textMessage(id, "assistant", "", createdAt);
         const completed: StoredSession = {
@@ -247,14 +274,19 @@ export const AgentServiceLive = Layer.effect(
       originalPrompt: string,
       step: number,
       previousAssistant: TranscriptMessage | undefined,
+      preferredAssistantId: MessageId | undefined,
+      mode: "fresh" | "continue",
     ): Stream.Stream<AgentStreamEvent, AgentRpcError> {
-      const requiresFactTool = step === 1 && originalPrompt.includes("lookup_project_fact");
+      const prompt =
+        mode === "continue" ? assembleContinuationPrompt(active) : assembleModelPrompt(active);
+      const requiresFactTool =
+        mode === "fresh" && step === 1 && originalPrompt.includes("lookup_project_fact");
       if (requiresFactTool) {
         return Stream.unwrap(
           Effect.gen(function* () {
             const response = yield* model
               .generateText({
-                prompt: assembleModelPrompt(active),
+                prompt,
                 toolkit: AgentToolkit,
                 toolChoice: requiredFactTool,
               })
@@ -269,6 +301,7 @@ export const AgentServiceLive = Layer.effect(
               step,
               previousAssistant,
               response.content,
+              preferredAssistantId,
             );
             return Stream.concat(Stream.fromIterable(events), continuation);
           }),
@@ -280,9 +313,12 @@ export const AgentServiceLive = Layer.effect(
           const captured = yield* Ref.make<ReadonlyArray<Response.AnyPart>>([]);
           const responseStream = model
             .streamText({
-              prompt: assembleModelPrompt(active),
+              prompt,
               toolkit: AgentToolkit,
-              toolChoice: originalPrompt.includes("lookup_project_fact") ? "none" : "auto",
+              toolChoice:
+                mode === "continue" || originalPrompt.includes("lookup_project_fact")
+                  ? "none"
+                  : "auto",
             })
             .pipe(
               Stream.provide(AgentToolkitLive),
@@ -294,7 +330,14 @@ export const AgentServiceLive = Layer.effect(
           const continuation = Stream.unwrap(
             Ref.get(captured).pipe(
               Effect.flatMap((parts) =>
-                continueAfterResponse(active, originalPrompt, step, previousAssistant, parts),
+                continueAfterResponse(
+                  active,
+                  originalPrompt,
+                  step,
+                  previousAssistant,
+                  parts,
+                  preferredAssistantId,
+                ),
               ),
             ),
           );
@@ -303,7 +346,7 @@ export const AgentServiceLive = Layer.effect(
       );
     }
 
-    const prepareTurn = Effect.fn("AgentService.prepareTurn")(function* (
+    const prepareLegacyTurn = Effect.fn("AgentService.prepareLegacyTurn")(function* (
       sessionId: SessionId,
       prompt: string,
     ) {
@@ -329,7 +372,64 @@ export const AgentServiceLive = Layer.effect(
       ];
       return Stream.concat(
         Stream.fromIterable(prefix),
-        streamRound(withUser, prompt, 1, undefined),
+        streamRound(withUser, prompt, 1, undefined, undefined, "fresh"),
+      );
+    });
+
+    const prepareRuntimeTurn = Effect.fn("AgentService.prepareRuntimeTurn")(function* (
+      input: TurnExecutionInput,
+    ) {
+      const loaded = yield* load(input.sessionId);
+      if (input.mode === "continue") {
+        const previousAssistant = loaded.messages.find(
+          (message) => message.id === input.assistantMessageId,
+        );
+        return streamRound(
+          loaded,
+          input.prompt,
+          1,
+          previousAssistant,
+          input.assistantMessageId,
+          "continue",
+        );
+      }
+
+      const existingUser = loaded.messages.find((message) => message.id === input.userMessageId);
+      const automaticCompaction =
+        existingUser === undefined
+          ? yield* compact(loaded, "threshold")
+          : {
+              session: loaded,
+              result: CompactionResult.make({
+                compacted: false,
+                reason: "below-threshold",
+                stats: compactionStats(loaded),
+              }),
+            };
+      const userTime = yield* Clock.currentTimeMillis;
+      const userMessage =
+        existingUser ?? textMessage(input.userMessageId, "user", input.prompt, userTime);
+      const withUser: StoredSession =
+        existingUser === undefined
+          ? {
+              ...automaticCompaction.session,
+              messages: [...automaticCompaction.session.messages, userMessage],
+            }
+          : automaticCompaction.session;
+      if (existingUser === undefined) yield* store.save(withUser);
+      const prefix = [
+        ...(automaticCompaction.result.compacted
+          ? [
+              AgentStreamEvent.cases.CompactionCompleted.make({
+                result: automaticCompaction.result,
+              }),
+            ]
+          : []),
+        AgentStreamEvent.cases.TurnStarted.make({ userMessage }),
+      ];
+      return Stream.concat(
+        Stream.fromIterable(prefix),
+        streamRound(withUser, input.prompt, 1, undefined, input.assistantMessageId, "fresh"),
       );
     });
 
@@ -340,15 +440,55 @@ export const AgentServiceLive = Layer.effect(
       Stream.scoped(
         Stream.unwrap(
           Effect.acquireRelease(semaphore.take(1), () => semaphore.release(1)).pipe(
-            Effect.flatMap(() => prepareTurn(sessionId, prompt)),
+            Effect.flatMap(() => prepareLegacyTurn(sessionId, prompt)),
           ),
         ),
       );
+
+    const runTurn = (input: TurnExecutionInput): Stream.Stream<AgentStreamEvent, AgentRpcError> =>
+      Stream.scoped(
+        Stream.unwrap(
+          Effect.acquireRelease(semaphore.take(1), () => semaphore.release(1)).pipe(
+            Effect.flatMap(() => prepareRuntimeTurn(input)),
+          ),
+        ),
+      );
+
+    const persistPartial = Effect.fn("AgentService.persistPartial")(function* (
+      input: PersistPartialInput,
+    ) {
+      const current = yield* load(input.sessionId);
+      const existing = current.messages.find((message) => message.id === input.assistantMessageId);
+      const createdAt = existing?.createdAt ?? (yield* Clock.currentTimeMillis);
+      const partial = textMessage(input.assistantMessageId, "assistant", input.text, createdAt);
+      const updated: StoredSession = {
+        ...current,
+        messages:
+          existing === undefined
+            ? [...current.messages, partial]
+            : current.messages.map((message) =>
+                message.id === input.assistantMessageId ? partial : message,
+              ),
+      };
+      yield* store.save(updated);
+    }, withLock);
+
+    const hasAssistantMessage = Effect.fn("AgentService.hasAssistantMessage")(function* (
+      sessionId: SessionId,
+      assistantMessageId: MessageId,
+    ) {
+      return (yield* load(sessionId)).messages.some(
+        (message) => message.id === assistantMessageId && message.role === "assistant",
+      );
+    }, withLock);
 
     return AgentService.of({
       getSession,
       updateContext,
       sendMessage,
+      runTurn,
+      persistPartial,
+      hasAssistantMessage,
       compactSession,
     });
   }),

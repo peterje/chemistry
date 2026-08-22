@@ -1,85 +1,114 @@
-$ bun install --frozen-lockfile
-bun install v1.3.14 (0d9b296a)
+Checking formatting...
 
-Checked 503 installs across 635 packages (no changes) [248.00ms]
-$ bun run typecheck
+All matched files use the correct format.
+Finished in 187ms on 70 files using 8 threads.
+$ oxlint .
 $ tsc --noEmit
-$ bun test
 bun test v1.3.14 (0d9b296a)
 
 test/agent-compaction.test.ts:
-(pass) non-destructive chat compaction > persists a summary overlay, preserves raw history, and rehydrates it [22.59ms]
-(pass) non-destructive chat compaction > automatically compacts above the configured threshold [3.87ms]
-(pass) non-destructive chat compaction > moves the boundary rather than splitting a tool interaction [7.34ms]
+(pass) non-destructive chat compaction > persists a summary overlay, preserves raw history, and rehydrates it [19.00ms]
+(pass) non-destructive chat compaction > automatically compacts above the configured threshold [3.58ms]
+(pass) non-destructive chat compaction > moves the boundary rather than splitting a tool interaction [5.66ms]
+
+test/runtime-websocket-attachment.test.ts:
+(pass) hibernatable socket attachment > rehydrates typed session, probe, stream, and cursor state [0.72ms]
+(pass) hibernatable socket attachment > advances ACKs monotonically and rejects unsent or stale streams [0.08ms]
+(pass) hibernatable socket attachment > rejects stale versions and malformed cursors [0.16ms]
+
+test/runtime-fault-matrix.test.ts:
+(pass) durable transition crash matrix > admission converges across failures before and after commit [15.55ms]
+(pass) durable transition crash matrix > claim is retryable whether the failure happens before or after commit [10.14ms]
+(pass) durable transition crash matrix > append never publishes an uncommitted event and replays a committed-but-unacknowledged event [2.26ms]
+(pass) durable transition crash matrix > a terminal committed before acknowledgement remains the single terminal outcome [1.43ms]
+(pass) durable transition crash matrix > wake incident creation is retryable and preserves one incident after post-commit failure [1.34ms]
 
 test/agent-message-context.test.ts:
-(pass) durable message sending and context > persists transcript history and isolates sessions [1.52ms]
-(pass) durable message sending and context > persists editable context and injects it into model requests [1.14ms]
+(pass) durable message sending and context > persists transcript history and isolates sessions [1.61ms]
+(pass) durable message sending and context > persists editable context and injects it into model requests [1.13ms]
 (pass) durable message sending and context > streams ordered turn events and returns the stored completion [0.87ms]
+
+test/durable-execution.test.ts:
+(pass) Effect-native durable execution > persists every event before emission and replays strictly after a cursor [5.35ms]
+(pass) Effect-native durable execution > converges duplicate submissions and preserves durable FIFO order [1.29ms]
+(pass) Effect-native durable execution > restores the oldest durably admitted turn after ephemeral runners disappear [1.39ms]
+(pass) Effect-native durable execution > isolates durable queues and streams between named sessions [1.10ms]
+(pass) Effect-native durable execution > generation-fences a stale producer before its next append [1.00ms]
+(pass) Effect-native durable execution > rehydrates an interrupted partial and continues under a new generation [1.54ms]
+(pass) Effect-native durable execution > converges the transcript-before-runtime-terminal crash window without re-inference [0.72ms]
+(pass) Effect-native durable execution > terminalizes instead of executing when the recovery attempt budget is exhausted [0.83ms]
+(pass) Effect-native durable execution > parks explicit interaction checkpoints without re-executing [0.63ms]
+(pass) Effect-native durable execution > bounds waiting for serialized turn ownership to stabilize [0.77ms]
+(pass) Effect-native durable execution > routes a live stall into durable bounded recovery [0.77ms]
+(pass) Effect-native durable execution > bounds repeated memory-reset recovery failures with a durable strike counter [1.01ms]
+(pass) Effect-native durable execution > enforces recovery work and no-progress budgets independently [1.55ms]
+(pass) Effect-native durable execution > rejects an oversized durable event before persistence or publication [0.62ms]
+(pass) Effect-native durable execution > rejects a stream that crosses its cumulative byte budget [4.86ms]
+(pass) Effect-native durable execution > removes expired streams and enforces bounded terminal retention [3.35ms]
 
 test/live.e2e.test.ts:
 (skip) live Cloudflare E2E (set RUN_LIVE_E2E=1 or run bun run test:e2e)
 
+test/runtime-protocol.test.ts:
+(pass) shared runtime WebSocket protocol > round-trips typed resume frames through the shared schemas [1.86ms]
+(pass) shared runtime WebSocket protocol > rejects malformed, stale-shaped, and oversized frames as typed errors [0.52ms]
+(pass) shared runtime WebSocket protocol > keeps turn submissions and liveness frames schema-bounded [0.47ms]
+
 test/agent-tools.test.ts:
-(pass) typed tool calling > executes the Toolkit handler and continues to a final answer [3.67ms]
-(pass) typed tool calling > fails with the typed loop-limit error after the configured bound [6.70ms]
+(pass) typed tool calling > executes the Toolkit handler and continues to a final answer [3.40ms]
+(pass) typed tool calling > fails with the typed loop-limit error after the configured bound [21.76ms]
+
+test/replay-handoff.test.ts:
+(pass) stored replay to live handoff > deduplicates the event visible in both backlog and parked live delivery [0.18ms]
+(pass) stored replay to live handoff > orders out-of-order parked events and filters replayed cursors [0.04ms]
+(pass) stored replay to live handoff > parks live events before resume ACK and honors the later browser cursor [0.05ms]
+(pass) stored replay to live handoff > signals bounded overflow instead of dropping a durable event [0.03ms]
+
+test/runtime-diagnostics.test.tsx:
+(pass) runtime diagnostics renders replay, checkpoint, recovery, and terminal evidence [7.69ms]
+
+test/runtime-state-migration.test.ts:
+(pass) versioned runtime migration > creates a separate empty runtime record when an existing session has none [0.39ms]
+(pass) versioned runtime migration > rejects unknown runtime versions instead of silently resetting them [0.11ms]
+
+test/runtime-client-state.test.ts:
+(pass) resumable browser runtime reducer > uses the validated high-water sequence on reconnect [0.16ms]
+(pass) resumable browser runtime reducer > deduplicates overlap and reconnects rather than accepting a gap [0.13ms]
+(pass) resumable browser runtime reducer > reconstructs a logical response from a full replay after reload [0.11ms]
+(pass) resumable browser runtime reducer > surfaces recovering and durable terminal states [0.06ms]
 
 test/agent-rpc-protocol.test.ts:
-(pass) shared AgentRpcs schema and NDJSON serialization > decodes branded payloads and rejects malformed session ids [0.85ms]
-(pass) shared AgentRpcs schema and NDJSON serialization > round-trips stream events and typed errors through schemas and NDJSON [0.89ms]
+(pass) shared AgentRpcs schema and NDJSON serialization > decodes branded payloads and rejects malformed session ids [0.28ms]
+(pass) shared AgentRpcs schema and NDJSON serialization > round-trips stream events and typed errors through schemas and NDJSON [0.69ms]
 
- 10 pass
+1 tests skipped:
+(skip) live Cloudflare E2E (set RUN_LIVE_E2E=1 or run bun run test:e2e)
+
+ 48 pass
  1 skip
  0 fail
- 61 expect() calls
-Ran 11 tests across 5 files. [907.00ms]
-$ bun run build
+ 193 expect() calls
+Ran 49 tests across 13 files. [1037.00ms]
 $ vite build && rm -rf .tanstack src/.tanstack
 vite v8.0.7 building client environment for production...
-[2Ktransforming...✓ 296 modules transformed.
+[2Ktransforming...✓ 302 modules transformed.
 rendering chunks...
 computing gzip size...
-dist/client/assets/main-CYj1zwKt.css              6.63 kB │ gzip:  2.01 kB
-dist/client/assets/routes-yNLh44DI.js            79.01 kB │ gzip: 27.78 kB
-dist/client/assets/RegistryContext-D1Z4K7lB.js  156.69 kB │ gzip: 51.41 kB
-dist/client/assets/main-B4eZkHLw.js             307.69 kB │ gzip: 96.35 kB
+dist/client/assets/main-D-kSr6R4.css              7.46 kB │ gzip:  2.16 kB
+dist/client/assets/routes-CmJNdOBY.js            88.58 kB │ gzip: 30.33 kB
+dist/client/assets/RegistryContext-BW3eBDQu.js  157.41 kB │ gzip: 51.58 kB
+dist/client/assets/main-B12lJaLS.js             307.81 kB │ gzip: 96.39 kB
 
-✓ built in 276ms
+✓ built in 226ms
 vite v8.0.7 building ssr environment for production...
-[2Ktransforming...✓ 52 modules transformed.
+[2Ktransforming...✓ 58 modules transformed.
 rendering chunks...
 computing gzip size...
 dist/server/assets/start-S6R1ogjB.js                        0.14 kB │ gzip:  0.13 kB
-dist/server/assets/_tanstack-start-manifest_v-BTqGqSIw.js   0.68 kB │ gzip:  0.38 kB
-dist/server/assets/router-BhE5uAZ0.js                       2.48 kB │ gzip:  1.04 kB
-dist/server/assets/routes-C7km538T.js                      20.02 kB │ gzip:  5.32 kB
+dist/server/assets/_tanstack-start-manifest_v-C6i5eaJs.js   0.70 kB │ gzip:  0.38 kB
+dist/server/assets/router-CsRCSdiF.js                       2.91 kB │ gzip:  1.12 kB
 dist/server/server.js                                      38.01 kB │ gzip: 10.50 kB
+dist/server/assets/routes-BFc2UdFU.js                      38.88 kB │ gzip:  9.40 kB
 
-✓ built in 72ms
-$ verify temporary route trees are absent
-temporary route trees absent
-$ bun run typecheck (post-build)
+✓ built in 54ms
 $ tsc --noEmit
-$ npx react-doctor@latest --verbose
-  
-[32m✔[39m Scanned 33 files in 13.3s [~8 workers]
-✔ Scanned 33 files in 14.2s
-
-React Doctor — alchemy-agent
-Score: 100 / 100 Great
-
-✔ No issues found!
-  Full diagnostics written to /var/folders/1d/ypjrh28d5z308qpsfjvh0rhc0000gn/T/react-doctor-120000d5-afbb-4e0b-b68e-16b6bed18721
-
-  ────────────────────────────────────────────────────────────
-
-  Share: https://react.doctor/share?p=alchemy-agent&s=100
-  Tell others how you did on socials
-
-  Docs: https://react.doctor/docs
-  Learn more about fixing issues, setting up CI/CD, and
-  configuring rules with a config file
-
-  GitHub: https://github.com/millionco/react-doctor
-  Report issues and star the repository!
-

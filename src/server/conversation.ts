@@ -120,10 +120,9 @@ const visibleHistory = (session: StoredSession): VisibleHistory => {
   };
 };
 
-/** Assemble the model prompt from durable context, summary, and recent history. */
-export const assembleModelPrompt = (session: StoredSession): Prompt.Prompt => {
+const modelMessages = (session: StoredSession): ReadonlyArray<Prompt.Message> => {
   const visible = visibleHistory(session);
-  return Prompt.fromMessages([
+  return [
     Prompt.systemMessage({ content: contextText(session.context) }),
     ...(visible.summary === undefined
       ? []
@@ -133,8 +132,25 @@ export const assembleModelPrompt = (session: StoredSession): Prompt.Prompt => {
           }),
         ]),
     ...visible.messages.map(toPromptMessage),
-  ]);
+  ];
 };
+
+/** Assemble the model prompt from durable context, summary, and recent history. */
+export const assembleModelPrompt = (session: StoredSession): Prompt.Prompt =>
+  Prompt.fromMessages(modelMessages(session));
+
+/** Assemble a provider-valid prompt that continues a persisted partial assistant turn. */
+export const assembleContinuationPrompt = (session: StoredSession): Prompt.Prompt =>
+  Prompt.fromMessages([
+    ...modelMessages(session),
+    Prompt.userMessage({
+      content: [
+        Prompt.textPart({
+          text: "Continue the previous assistant response exactly where it stopped. Do not repeat completed text.",
+        }),
+      ],
+    }),
+  ]);
 
 const partSize = (part: TranscriptPart): number =>
   TranscriptPart.match(part, {

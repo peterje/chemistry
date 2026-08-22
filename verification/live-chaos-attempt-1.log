@@ -1,0 +1,124 @@
+$ RUN_LIVE_E2E=1 bun test test/live.e2e.test.ts
+bun test v1.3.14 (0d9b296a)
+
+test/live.e2e.test.ts:
+Plan: 2 to create
+[AgentBackend] create
+[AgentBackend/AI] create
+[AgentBackend/AgentSession] create
+[Website] create
+[Website/BACKEND] create
+
+[Website] pre-creating
+[AgentBackend] pre-creating
+[Website] Pre-creating worker...
+[AgentBackend] Pre-creating worker...
+[Website] pending
+[AgentBackend] pending
+[AgentBackend] creating
+[AgentBackend] Uploading worker (560.03 KB) ...
+[Website] creating
+[AgentBackend] created
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 225ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 182ms[39m
+[Website] Checking assets...
+[Website] Uploaded 0 of 4 assets...
+[Website] Uploaded 2 of 4 assets...
+[Website] Uploaded 3 of 4 assets...
+[Website] Uploaded 4 of 4 assets...
+[Website] Uploading worker (1.73 MB) ...
+[Website] Enabling workers.dev subdomain...
+[Website] created
+[AgentBackend] created
+[Website] created
+
+Done: 4 succeeded
+(pass) verifies messages, context, tools, compaction, and runtime snapshots through Effect RPC [9467.71ms]
+94 |   connection: LiveRuntimeSocket,
+95 | ) {
+96 |   const item = yield* Queue.take(connection.inbox).pipe(
+97 |     Effect.timeout("90 seconds"),
+98 |     Effect.mapError(
+99 |       () => new LiveSocketFailure({ message: "Timed out waiting for runtime frame" }),
+                 ^
+error: Timed out waiting for runtime frame
+ _tag: "LiveSocketFailure",
+
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/test/live.e2e.test.ts:99:13)
+      at ~effect/Utils/internal (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Utils.js:85:16)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:720:53)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at onExit (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1010:5)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1021:7)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:434:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+(fail) proves typed routing, reconnect replay, hibernation attachment wake, and RPC controls [172861.89ms]
+Plan: 2 to update
+[AgentBackend] update
+[Website] update
+
+[Website] pending
+[AgentBackend] pending
+[AgentBackend] updating
+[Website] updating
+[AgentBackend] Uploading worker (560.07 KB) ...
+[36mvite v8.0.7 [32mbuilding client environment for production...[36m[39m
+[32m✓ built in 277ms[39m
+[36mvite v8.0.7 [32mbuilding ssr environment for production...[36m[39m
+[32m✓ built in 217ms[39m
+[Website] Checking assets...
+[AgentBackend] updated
+[Website] Uploading worker (1.73 MB) ...
+[Website] updated
+[AgentBackend] updated
+[Website] updated
+
+Done: 4 succeeded
+435 |       expect(redeployed.websiteUrl).toBe(websiteUrl);
+436 |
+437 |       const resumed = yield* resumeEventually(websiteUrl, sessionId, partialSequence);
+438 |       expect(resumed.probe.runtime.bootId).not.toBe(oldBootId);
+439 |       const result = yield* collectThroughTerminal(resumed.connection, resumed.replayFrames);
+440 |       expect(result.terminal.status).toBe("completed");
+                                           ^
+error: expect(received).toBe(expected)
+
+Expected: "completed"
+Received: "interrupted"
+
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/test/live.e2e.test.ts:440:38)
+      at ~effect/Effect/successCont (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:927:26)
+      at runLoop (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:461:98)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:421:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at onExit (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1010:5)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:1021:7)
+      at evaluate (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:434:23)
+      at <anonymous> (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/internal/effect.js:780:15)
+      at releaseTakers (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Queue.js:1479:5)
+      at runTasks (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:160:15)
+      at afterScheduled (/Users/peteredm/.reference/alchemy-agent/node_modules/effect/dist/Scheduler.js:150:10)
+(fail) forces a mid-turn Worker redeploy and converges through transcript continuation [10648.35ms]
+Plan: 2 to delete
+[AgentBackend] delete
+[AgentBackend/AI] delete
+[AgentBackend/AgentSession] delete
+[Website] delete
+[Website/BACKEND] delete
+
+[Website] deleting
+[Website] deleted
+[AgentBackend] deleting
+[AgentBackend] deleted
+
+Done: 2 succeeded
+
+ 1 pass
+ 2 fail
+ 23 expect() calls
+Ran 3 tests across 1 file. [208.95s]
+error: script "test:e2e" exited with code 1

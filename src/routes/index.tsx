@@ -7,9 +7,11 @@ import { useMemo, useState } from "react";
 import { CompactionCard } from "../client/components/compaction-card.tsx";
 import { ContextEditor } from "../client/components/context-editor.tsx";
 import { MessageComposer } from "../client/components/message-composer.tsx";
+import { RuntimeDiagnostics } from "../client/components/runtime-diagnostics.tsx";
 import { StatusPill } from "../client/components/status-pill.tsx";
 import { Transcript } from "../client/components/transcript.tsx";
 import { sessionSnapshotAtom } from "../client/agent-client.ts";
+import { useResumableAgent } from "../client/use-resumable-agent.ts";
 import { SessionId } from "../shared/agent-protocol.ts";
 
 /** Root route for the complete Effect-native agent demonstration. */
@@ -26,6 +28,7 @@ function AgentDemo() {
   const [sessionDraft, setSessionDraft] = useState<string>(sessionId);
   const [sessionError, setSessionError] = useState<string | undefined>();
   const snapshotAtom = useMemo(() => sessionSnapshotAtom(sessionId), [sessionId]);
+  const runtime = useResumableAgent(sessionId);
   const snapshotResult = useAtomValue(snapshotAtom);
   const refreshSnapshot = useAtomRefresh(snapshotAtom);
   const snapshot = AsyncResult.isSuccess(snapshotResult) ? snapshotResult.value : undefined;
@@ -57,7 +60,7 @@ function AgentDemo() {
         <div className="architecture-note">
           <span>React</span>
           <i>→</i>
-          <span>Effect RPC</span>
+          <span>Effect RPC + WS Replay</span>
           <i>→</i>
           <span>Worker</span>
           <i>→</i>
@@ -94,10 +97,15 @@ function AgentDemo() {
             <StatusPill result={snapshotResult} />
           </div>
           <Transcript snapshot={snapshot} />
-          <MessageComposer sessionId={sessionId} refreshSnapshot={refreshSnapshot} />
+          <MessageComposer
+            socket={runtime.socket}
+            runtime={runtime.snapshot}
+            refreshSnapshot={refreshSnapshot}
+          />
         </section>
 
         <aside className="control-panel">
+          <RuntimeDiagnostics runtime={runtime.snapshot} />
           {snapshot !== undefined && (
             <ContextEditor
               key={`${sessionId}:${snapshot.context.systemPrompt}:${snapshot.context.memory}`}
