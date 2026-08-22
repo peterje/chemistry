@@ -5,6 +5,7 @@ import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as LanguageModel from "effect/unstable/ai/LanguageModel";
+import * as Prompt from "effect/unstable/ai/Prompt";
 import type * as Response from "effect/unstable/ai/Response";
 import {
   AgentCompactionError,
@@ -13,8 +14,8 @@ import {
   Compaction,
   CompactionResult,
   ToolLoopLimitExceeded,
-  TranscriptMessage,
   type AgentContext,
+  type ChatMessage,
   type AgentRpcError,
   type MessageId,
   type SessionId,
@@ -30,6 +31,7 @@ import {
   estimateModelTokens,
   createInitialSession,
   snapshot,
+  streamMessage,
   textMessage,
   transcriptSegmentsFromResponse,
 } from "./conversation.ts";
@@ -38,6 +40,15 @@ import { SessionStore, type StoredSession } from "./session-store.ts";
 import type { PersistPartialInput, TurnExecutionInput } from "./turn-executor.ts";
 
 const requiredFactTool = { tool: "lookup_project_fact" } as const;
+
+const isAssistantMessage = (
+  entry: ChatMessage,
+): entry is ChatMessage & { readonly message: Prompt.AssistantMessage } =>
+  entry.message.role === "assistant";
+
+const isUserMessage = (
+  entry: ChatMessage,
+): entry is ChatMessage & { readonly message: Prompt.UserMessage } => entry.message.role === "user";
 
 const inferenceError = (operation: string, cause: unknown) =>
   new AgentInferenceError({
@@ -160,20 +171,29 @@ export const AgentServiceLive = Layer.effect(
       preferredAssistantId?: MessageId,
     ) {
       const segments = yield* transcriptSegmentsFromResponse(parts);
-      let messages: ReadonlyArray<TranscriptMessage> = active.messages;
-      let assistant: TranscriptMessage | undefined;
+      let messages: ReadonlyArray<ChatMessage> = active.messages;
+      let assistant: (ChatMessage & { readonly message: Prompt.AssistantMessage }) | undefined;
       let availableAssistantId = preferredAssistantId;
 
       for (const segment of segments) {
         const createdAt = yield* Clock.currentTimeMillis;
-        if (segment.role === "assistant" && availableAssistantId !== undefined) {
-          const existing = messages.find((message) => message.id === availableAssistantId);
-          const message = TranscriptMessage.make({
+        const segmentMessage = segment.message;
+        if (segmentMessage.role === "assistant" && availableAssistantId !== undefined) {
+          const existingCandidate = messages.find((entry) => entry.id === availableAssistantId);
+          const existing =
+            existingCandidate !== undefined && isAssistantMessage(existingCandidate)
+              ? existingCandidate
+              : undefined;
+          const message: ChatMessage & { readonly message: Prompt.AssistantMessage } = {
             id: availableAssistantId,
-            role: "assistant",
-            parts: existing === undefined ? segment.parts : [...existing.parts, ...segment.parts],
             createdAt: existing?.createdAt ?? createdAt,
-          });
+            message: Prompt.assistantMessage({
+              content:
+                existing === undefined
+                  ? segmentMessage.content
+                  : [...existing.message.content, ...segmentMessage.content],
+            }),
+          };
           messages =
             existing === undefined
               ? [...messages, message]
@@ -185,14 +205,9 @@ export const AgentServiceLive = Layer.effect(
           continue;
         }
         const id = yield* ids.next();
-        const message = TranscriptMessage.make({
-          id,
-          role: segment.role,
-          parts: segment.parts,
-          createdAt,
-        });
+        const message: ChatMessage = { id, createdAt, message: segmentMessage };
         messages = [...messages, message];
-        if (message.role === "assistant") assistant = message;
+        if (isAssistantMessage(message)) assistant = message;
       }
 
       const updated: StoredSession = { ...active, messages };
@@ -215,7 +230,7 @@ export const AgentServiceLive = Layer.effect(
       active: StoredSession,
       originalPrompt: string,
       step: number,
-      previousAssistant: TranscriptMessage | undefined,
+      previousAssistant: (ChatMessage & { readonly message: Prompt.AssistantMessage }) | undefined,
       parts: ReadonlyArray<Response.AnyPart>,
       preferredAssistantId: MessageId | undefined,
     ): Effect.Effect<Stream.Stream<AgentStreamEvent, AgentRpcError>, AgentRpcError> {
@@ -246,7 +261,7 @@ export const AgentServiceLive = Layer.effect(
         if (assistant !== undefined) {
           return Stream.make(
             AgentStreamEvent.cases.TurnCompleted.make({
-              assistantMessage: assistant,
+              assistantMessage: streamMessage(assistant),
               stats: compactionStats(persisted.session),
             }),
           );
@@ -262,7 +277,7 @@ export const AgentServiceLive = Layer.effect(
         yield* store.save(completed);
         return Stream.make(
           AgentStreamEvent.cases.TurnCompleted.make({
-            assistantMessage: emptyAssistant,
+            assistantMessage: streamMessage(emptyAssistant),
             stats: compactionStats(completed),
           }),
         );
@@ -273,7 +288,7 @@ export const AgentServiceLive = Layer.effect(
       active: StoredSession,
       originalPrompt: string,
       step: number,
-      previousAssistant: TranscriptMessage | undefined,
+      previousAssistant: (ChatMessage & { readonly message: Prompt.AssistantMessage }) | undefined,
       preferredAssistantId: MessageId | undefined,
       mode: "fresh" | "continue",
     ): Stream.Stream<AgentStreamEvent, AgentRpcError> {
@@ -394,7 +409,9 @@ export const AgentServiceLive = Layer.effect(
               }),
             ]
           : []),
-        AgentStreamEvent.cases.TurnStarted.make({ userMessage }),
+        AgentStreamEvent.cases.TurnStarted.make({
+          userMessage: streamMessage(userMessage),
+        }),
       ];
       return Stream.concat(
         Stream.fromIterable(prefix),
@@ -411,9 +428,13 @@ export const AgentServiceLive = Layer.effect(
           ...loaded,
           context: input.requestSnapshot.context,
         };
-        const previousAssistant = continuedSession.messages.find(
+        const previousCandidate = continuedSession.messages.find(
           (message) => message.id === input.assistantMessageId,
         );
+        const previousAssistant =
+          previousCandidate !== undefined && isAssistantMessage(previousCandidate)
+            ? previousCandidate
+            : undefined;
         return streamRound(
           continuedSession,
           input.prompt,
@@ -432,9 +453,13 @@ export const AgentServiceLive = Layer.effect(
         messages: loaded.messages.filter((message) => historyIds.has(message.id)),
         compactions: loaded.compactions.filter((compaction) => compactionIds.has(compaction.id)),
       };
-      const existingUser = capturedSession.messages.find(
+      const existingCandidate = capturedSession.messages.find(
         (message) => message.id === input.userMessageId,
       );
+      const existingUser =
+        existingCandidate !== undefined && isUserMessage(existingCandidate)
+          ? existingCandidate
+          : undefined;
       const automaticCompaction =
         existingUser === undefined
           ? yield* compact(capturedSession, "threshold")
@@ -465,7 +490,9 @@ export const AgentServiceLive = Layer.effect(
               }),
             ]
           : []),
-        AgentStreamEvent.cases.TurnStarted.make({ userMessage }),
+        AgentStreamEvent.cases.TurnStarted.make({
+          userMessage: streamMessage(userMessage),
+        }),
       ];
       return Stream.concat(
         Stream.fromIterable(prefix),
@@ -518,7 +545,7 @@ export const AgentServiceLive = Layer.effect(
       assistantMessageId: MessageId,
     ) {
       return (yield* load(sessionId)).messages.some(
-        (message) => message.id === assistantMessageId && message.role === "assistant",
+        (message) => message.id === assistantMessageId && isAssistantMessage(message),
       );
     }, withLock);
 

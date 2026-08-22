@@ -154,11 +154,13 @@ Forward progress resets the no-progress attempt window but not cumulative recove
 
 ## Storage records and migration
 
-Transcript data keeps its existing key and schema:
+Chat data keeps its existing key while using a versioned canonical Effect AI representation:
 
 ```text
-agent-session:<sessionId> -> StoredSession v1
+agent-session:<sessionId> -> PersistedSessionV2 { chat.prompt: Prompt, chat.metadata }
 ```
+
+`chat.prompt` is encoded and decoded by Effect AI's built-in `Prompt.Prompt` codec. Stable message IDs and creation timestamps remain in a same-length positional metadata array because they are application concerns rather than model prompt content; the `ChatHistory` schema rejects mismatched lengths. The former unversioned custom `_tag`/`parts` transcript shape is explicitly decoded and migrated in place on first access, preserving message IDs, timestamps, tool calls, tool results, and compaction boundaries. Durable runtime event logs retain their backward-compatible replay projection so active and recently completed streams from the prior release remain decodable; that projection is transport evidence, not authoritative chat serialization.
 
 Runtime and navigation data are versioned separately:
 
@@ -182,7 +184,7 @@ The singleton catalog retains at most 200 summaries ordered by activity. Creatio
 - boot/wake metadata;
 - next alarm intent or null.
 
-Absence of `agent-runtime:*` migrates the original chat-only release by constructing an empty `RuntimeStateV2` without changing `agent-session:*`. The first published runtime's `RuntimeStateV1` is explicitly decoded and migrated in place: prompts become typed inputs, queued/active identities and stream logs are preserved, and pending request-snapshot/phase-ledger records force a fresh preparing-phase capture before execution or continuation. Unknown versions or malformed records fail as typed persistence/corruption errors; they are never silently reset.
+Absence of `agent-runtime:*` migrates the original chat-only release by constructing an empty `RuntimeStateV2` without changing the meaning of `agent-session:*`. The first published runtime's `RuntimeStateV1` is explicitly decoded and migrated in place: prompts become typed inputs, queued/active identities and stream logs are preserved, and pending request-snapshot/phase-ledger records force a fresh preparing-phase capture before execution or continuation. Unknown versions or malformed records fail as typed persistence/corruption errors; they are never silently reset.
 
 ## Failure semantics
 

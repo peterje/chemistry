@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Prompt from "effect/unstable/ai/Prompt";
 import type * as Response from "effect/unstable/ai/Response";
@@ -8,12 +9,14 @@ import {
   AgentStreamEvent,
   CompactionStats,
   SessionSnapshot,
-  TranscriptMessage,
-  TranscriptPart,
+  StreamMessage,
+  StreamMessagePart,
+  chatHistoryFromMessages,
+  type ChatMessage,
   type MessageId,
   type SessionId,
 } from "@chemistry/contracts/agent-protocol";
-import { StoredSession } from "./session-store.ts";
+import type { StoredSession } from "./session-store.ts";
 
 const decodeJson = Schema.decodeUnknownEffect(Schema.Json);
 
@@ -25,84 +28,21 @@ export const defaultAgentContext = AgentContext.make({
 });
 
 /** Construct a new empty durable session. */
-export const createInitialSession = (sessionId: SessionId): StoredSession =>
-  StoredSession.make({
-    sessionId,
-    context: defaultAgentContext,
-    messages: [],
-    compactions: [],
-  });
+export const createInitialSession = (sessionId: SessionId): StoredSession => ({
+  sessionId,
+  context: defaultAgentContext,
+  messages: [],
+  compactions: [],
+});
 
 const contextText = (context: AgentContext): string =>
   context.memory.trim().length === 0
     ? context.systemPrompt
     : `${context.systemPrompt}\n\n<session-memory>\n${context.memory}\n</session-memory>`;
 
-const promptPart = (part: TranscriptPart): Prompt.AssistantMessagePart =>
-  TranscriptPart.match<Prompt.AssistantMessagePart>(part, {
-    Text: ({ text }) => Prompt.textPart({ text }),
-    ToolCall: ({ callId, name, input }) =>
-      Prompt.toolCallPart({
-        id: callId,
-        name,
-        params: input,
-        providerExecuted: false,
-      }),
-    ToolResult: ({ callId, name, output, isFailure }) =>
-      Prompt.toolResultPart({
-        id: callId,
-        name,
-        result: output,
-        isFailure,
-        providerExecuted: false,
-      }),
-  });
-
-const toPromptMessage = (message: TranscriptMessage): Prompt.Message => {
-  switch (message.role) {
-    case "system": {
-      const text: Array<string> = [];
-      for (const part of message.parts) {
-        if (TranscriptPart.guards.Text(part)) text.push(part.text);
-      }
-      return Prompt.systemMessage({ content: text.join("\n") });
-    }
-    case "user": {
-      const content: Array<Prompt.TextPart> = [];
-      for (const part of message.parts) {
-        if (TranscriptPart.guards.Text(part)) {
-          content.push(Prompt.textPart({ text: part.text }));
-        }
-      }
-      return Prompt.userMessage({ content });
-    }
-    case "assistant":
-      return Prompt.assistantMessage({
-        content: message.parts.map(promptPart),
-      });
-    case "tool": {
-      const content: Array<Prompt.ToolResultPart> = [];
-      for (const part of message.parts) {
-        if (TranscriptPart.guards.ToolResult(part)) {
-          content.push(
-            Prompt.toolResultPart({
-              id: part.callId,
-              name: part.name,
-              result: part.output,
-              isFailure: part.isFailure,
-              providerExecuted: false,
-            }),
-          );
-        }
-      }
-      return Prompt.toolMessage({ content });
-    }
-  }
-};
-
 interface VisibleHistory {
   readonly summary: string | undefined;
-  readonly messages: ReadonlyArray<TranscriptMessage>;
+  readonly messages: ReadonlyArray<ChatMessage>;
 }
 
 const visibleHistory = (session: StoredSession): VisibleHistory => {
@@ -131,7 +71,7 @@ const modelMessages = (session: StoredSession): ReadonlyArray<Prompt.Message> =>
             content: `<conversation-summary>\n${visible.summary}\n</conversation-summary>`,
           }),
         ]),
-    ...visible.messages.map(toPromptMessage),
+    ...visible.messages.map((entry) => entry.message),
   ];
 };
 
@@ -152,12 +92,36 @@ export const assembleContinuationPrompt = (session: StoredSession): Prompt.Promp
     }),
   ]);
 
-const partSize = (part: TranscriptPart): number =>
-  TranscriptPart.match(part, {
-    Text: ({ text }) => text.length,
-    ToolCall: ({ name, input }) => name.length + JSON.stringify(input).length,
-    ToolResult: ({ name, output }) => name.length + JSON.stringify(output).length,
-  });
+const partSize = (part: Prompt.Part): number => {
+  switch (part.type) {
+    case "text":
+    case "reasoning":
+      return part.text.length;
+    case "file":
+      return (
+        part.mediaType.length +
+        (part.fileName?.length ?? 0) +
+        (Predicate.isString(part.data)
+          ? part.data.length
+          : part.data instanceof URL
+            ? part.data.href.length
+            : part.data.byteLength)
+      );
+    case "tool-call":
+      return part.name.length + (JSON.stringify(part.params)?.length ?? 0);
+    case "tool-result":
+      return part.name.length + (JSON.stringify(part.result)?.length ?? 0);
+    case "tool-approval-request":
+      return part.approvalId.length + part.toolCallId.length;
+    case "tool-approval-response":
+      return part.approvalId.length + (part.reason?.length ?? 0);
+  }
+};
+
+const messageSize = (message: Prompt.Message): number =>
+  message.role === "system"
+    ? message.content.length
+    : message.content.reduce((total, part) => total + partSize(part), 0);
 
 /** Estimate model tokens with the Workers-safe four-characters-per-token rule. */
 export const estimateModelTokens = (session: StoredSession): number => {
@@ -165,8 +129,7 @@ export const estimateModelTokens = (session: StoredSession): number => {
   const contextCharacters = contextText(session.context).length;
   const summaryCharacters = visible.summary?.length ?? 0;
   const messageCharacters = visible.messages.reduce(
-    (total, message) =>
-      total + message.parts.reduce((partTotal, part) => partTotal + partSize(part), 0),
+    (total, entry) => total + messageSize(entry.message),
     0,
   );
   return Math.ceil((contextCharacters + summaryCharacters + messageCharacters) / 4);
@@ -190,96 +153,93 @@ export const compactionStats = (session: StoredSession): CompactionStats => {
 /** Project a durable session into its public RPC snapshot. */
 export const snapshot = (session: StoredSession): SessionSnapshot =>
   SessionSnapshot.make({
-    ...session,
+    sessionId: session.sessionId,
+    context: session.context,
+    chat: chatHistoryFromMessages(session.messages),
+    compactions: session.compactions,
     stats: compactionStats(session),
   });
 
-/** Construct a durable text message. */
-export const textMessage = (
+/** Construct a durable user text message backed by Effect AI Prompt. */
+export function textMessage(
+  id: MessageId,
+  role: "user",
+  text: string,
+  createdAt: number,
+): ChatMessage & { readonly message: Prompt.UserMessage };
+/** Construct a durable assistant text message backed by Effect AI Prompt. */
+export function textMessage(
+  id: MessageId,
+  role: "assistant",
+  text: string,
+  createdAt: number,
+): ChatMessage & { readonly message: Prompt.AssistantMessage };
+/** Construct a durable text message for the selected supported chat role. */
+export function textMessage(
   id: MessageId,
   role: "user" | "assistant",
   text: string,
   createdAt: number,
-): TranscriptMessage =>
-  TranscriptMessage.make({
+): ChatMessage {
+  return {
     id,
-    role,
-    parts: [TranscriptPart.cases.Text.make({ text })],
     createdAt,
+    message:
+      role === "user"
+        ? Prompt.userMessage({ content: [Prompt.textPart({ text })] })
+        : Prompt.assistantMessage({ content: [Prompt.textPart({ text })] }),
+  };
+}
+
+/** Project one canonical chat message into the stable durable replay-event shape. */
+export const streamMessage = (entry: ChatMessage): StreamMessage => {
+  const { message } = entry;
+  const parts =
+    message.role === "system"
+      ? [StreamMessagePart.cases.Text.make({ text: message.content })]
+      : message.content.flatMap((part) => {
+          switch (part.type) {
+            case "text":
+            case "reasoning":
+              return [StreamMessagePart.cases.Text.make({ text: part.text })];
+            case "file":
+              return [
+                StreamMessagePart.cases.Text.make({
+                  text: `[file ${part.fileName ?? part.mediaType}]`,
+                }),
+              ];
+            case "tool-call":
+            case "tool-result":
+            case "tool-approval-request":
+            case "tool-approval-response":
+              return [];
+          }
+        });
+  return StreamMessage.make({
+    id: entry.id,
+    role: message.role,
+    parts,
+    createdAt: entry.createdAt,
   });
+};
 
 const inferenceDecodeError = (operation: string, cause: unknown) =>
   new AgentInferenceError({ operation, message: String(cause) });
 
-const transcriptPartFromPromptPart = (
-  part: Prompt.Part,
-): Effect.Effect<TranscriptPart | undefined, AgentInferenceError> => {
-  switch (part.type) {
-    case "text":
-      return Effect.succeed(TranscriptPart.cases.Text.make({ text: part.text }));
-    case "tool-call":
-      return decodeJson(part.params).pipe(
-        Effect.map((input) =>
-          TranscriptPart.cases.ToolCall.make({
-            callId: part.id,
-            name: part.name,
-            input,
-          }),
-        ),
-        Effect.mapError((cause) => inferenceDecodeError("decode-tool-call", cause)),
-      );
-    case "tool-result":
-      return decodeJson(part.result).pipe(
-        Effect.map((output) =>
-          TranscriptPart.cases.ToolResult.make({
-            callId: part.id,
-            name: part.name,
-            output,
-            isFailure: part.isFailure,
-          }),
-        ),
-        Effect.mapError((cause) => inferenceDecodeError("decode-tool-result", cause)),
-      );
-    default:
-      return Effect.succeed(undefined);
-  }
-};
-
-/** One role-correct transcript message segment derived from a model response. */
+/** One role-correct canonical message segment derived from a model response. */
 export interface TranscriptSegment {
-  readonly role: "assistant" | "tool";
-  readonly parts: ReadonlyArray<TranscriptPart>;
+  /** Effect AI assistant or tool message ready for durable Prompt history. */
+  readonly message: Prompt.AssistantMessage | Prompt.ToolMessage;
 }
 
-const transcriptSegmentFromPromptMessage = (
-  message: Prompt.Message,
-): Effect.Effect<TranscriptSegment | undefined, AgentInferenceError> => {
-  if (message.role !== "assistant" && message.role !== "tool") {
-    return Effect.succeed(undefined);
-  }
-  return Effect.forEach(message.content, transcriptPartFromPromptPart).pipe(
-    Effect.map((parts) => {
-      const present: Array<TranscriptPart> = [];
-      for (const part of parts) {
-        if (part !== undefined) present.push(part);
-      }
-      return present.length === 0 ? undefined : { role: message.role, parts: present };
-    }),
-  );
-};
-
-/** Group complete or streamed Effect AI response parts into durable messages. */
+/** Group complete or streamed Effect AI response parts into canonical messages. */
 export const transcriptSegmentsFromResponse = (
   parts: ReadonlyArray<Response.AnyPart>,
 ): Effect.Effect<ReadonlyArray<TranscriptSegment>, AgentInferenceError> =>
-  Effect.forEach(Prompt.fromResponseParts(parts).content, transcriptSegmentFromPromptMessage).pipe(
-    Effect.map((segments) => {
-      const present: Array<TranscriptSegment> = [];
-      for (const segment of segments) {
-        if (segment !== undefined) present.push(segment);
-      }
-      return present;
-    }),
+  Effect.succeed(
+    Prompt.fromResponseParts(parts).content.flatMap((message) =>
+      message.role === "assistant" || message.role === "tool" ? [{ message }] : [],
+    ),
   );
 
 /** Convert one streamed Effect AI response part into a live UI event. */

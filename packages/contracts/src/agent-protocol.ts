@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import * as RpcSchema from "effect/unstable/rpc/RpcSchema";
+import * as Prompt from "effect/unstable/ai/Prompt";
 
 const NonNegativeInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
 const PositiveInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0));
@@ -61,14 +62,64 @@ export const MessageId = Schema.NonEmptyString.pipe(Schema.brand("MessageId"));
 /** The branded type decoded by {@link MessageId}. */
 export type MessageId = typeof MessageId.Type;
 
-/** The roles represented in durable conversation history. */
-export const MessageRole = Schema.Literals(["system", "user", "assistant", "tool"]);
+/** Application metadata retained beside one Effect AI prompt message. */
+export const ChatMessageMetadata = Schema.Struct({
+  id: MessageId,
+  createdAt: Schema.Number,
+}).annotate({ identifier: "ChatMessageMetadata" });
 
-/** A durable conversation-message role. */
-export type MessageRole = typeof MessageRole.Type;
+/** Decoded metadata for one message in durable chat history. */
+export interface ChatMessageMetadata extends Schema.Schema.Type<typeof ChatMessageMetadata> {}
 
-/** Serializable content parts retained in the raw transcript. */
-export const TranscriptPart = Schema.TaggedUnion({
+/**
+ * Durable chat history encoded with Effect AI's canonical `Prompt` schema plus
+ * positional application metadata.
+ */
+export const ChatHistory = Schema.Struct({
+  prompt: Prompt.Prompt,
+  metadata: Schema.Array(ChatMessageMetadata),
+})
+  .check(
+    Schema.makeFilter((history) =>
+      history.prompt.content.length === history.metadata.length
+        ? undefined
+        : "Prompt content and message metadata must have equal lengths",
+    ),
+  )
+  .annotate({ identifier: "ChatHistory" });
+
+/** Decoded durable chat history. */
+export interface ChatHistory extends Schema.Schema.Type<typeof ChatHistory> {}
+
+/** One metadata-bearing view over an Effect AI prompt message. */
+export interface ChatMessage {
+  /** Stable application identity used by compaction and recovery. */
+  readonly id: MessageId;
+  /** Durable creation timestamp. */
+  readonly createdAt: number;
+  /** Canonical Effect AI message. */
+  readonly message: Prompt.Message;
+}
+
+/** Project canonical prompt history into metadata-bearing application messages. */
+export const chatMessages = (history: ChatHistory): ReadonlyArray<ChatMessage> => {
+  const messages: Array<ChatMessage> = [];
+  for (const [index, message] of history.prompt.content.entries()) {
+    const metadata = history.metadata[index];
+    if (metadata !== undefined) messages.push({ ...metadata, message });
+  }
+  return messages;
+};
+
+/** Construct canonical prompt history from metadata-bearing application messages. */
+export const chatHistoryFromMessages = (messages: ReadonlyArray<ChatMessage>): ChatHistory =>
+  ChatHistory.make({
+    prompt: Prompt.fromMessages(messages.map((entry) => entry.message)),
+    metadata: messages.map(({ id, createdAt }) => ChatMessageMetadata.make({ id, createdAt })),
+  });
+
+/** Stable replay payload parts retained independently from persisted Prompt history. */
+export const StreamMessagePart = Schema.TaggedUnion({
   Text: {
     text: Schema.String,
   },
@@ -85,19 +136,22 @@ export const TranscriptPart = Schema.TaggedUnion({
   },
 });
 
-/** A text, tool-call, or tool-result transcript part. */
-export type TranscriptPart = typeof TranscriptPart.Type;
+/** A text, tool-call, or tool-result replay payload part. */
+export type StreamMessagePart = typeof StreamMessagePart.Type;
 
-/** A message in the immutable, user-visible session transcript. */
-export const TranscriptMessage = Schema.Struct({
+/**
+ * Backward-compatible message projection used only in durable runtime events;
+ * authoritative chat history uses {@link ChatHistory}.
+ */
+export const StreamMessage = Schema.Struct({
   id: MessageId,
-  role: MessageRole,
-  parts: Schema.Array(TranscriptPart),
+  role: Schema.Literals(["system", "user", "assistant", "tool"]),
+  parts: Schema.Array(StreamMessagePart),
   createdAt: Schema.Number,
-}).annotate({ identifier: "TranscriptMessage" });
+}).annotate({ identifier: "StreamMessage" });
 
-/** A decoded immutable transcript message. */
-export interface TranscriptMessage extends Schema.Schema.Type<typeof TranscriptMessage> {}
+/** Decoded backward-compatible runtime event message. */
+export interface StreamMessage extends Schema.Schema.Type<typeof StreamMessage> {}
 
 /** Durable instructions and memory injected into every model turn. */
 export const AgentContext = Schema.Struct({
@@ -159,7 +213,7 @@ export interface ChatList extends Schema.Schema.Type<typeof ChatList> {}
 export const SessionSnapshot = Schema.Struct({
   sessionId: SessionId,
   context: AgentContext,
-  messages: Schema.Array(TranscriptMessage),
+  chat: ChatHistory,
   compactions: Schema.Array(Compaction),
   stats: CompactionStats,
 }).annotate({ identifier: "SessionSnapshot" });
@@ -180,7 +234,7 @@ export interface CompactionResult extends Schema.Schema.Type<typeof CompactionRe
 /** Stream events emitted during a message turn. */
 export const AgentStreamEvent = Schema.TaggedUnion({
   TurnStarted: {
-    userMessage: TranscriptMessage,
+    userMessage: StreamMessage,
   },
   TextDelta: {
     delta: Schema.String,
@@ -200,7 +254,7 @@ export const AgentStreamEvent = Schema.TaggedUnion({
     result: CompactionResult,
   },
   TurnCompleted: {
-    assistantMessage: TranscriptMessage,
+    assistantMessage: StreamMessage,
     stats: CompactionStats,
   },
 });

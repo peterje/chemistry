@@ -1,5 +1,5 @@
 import type { RuntimeSocketSnapshot } from "@chemistry/client-runtime/resumable-agent-socket";
-import type { SessionSnapshot } from "@chemistry/contracts/agent-protocol";
+import { chatMessages, type SessionSnapshot } from "@chemistry/contracts/agent-protocol";
 import { LiveTurn } from "./live-turn.tsx";
 import { TranscriptRow } from "./transcript-row.tsx";
 
@@ -38,7 +38,7 @@ export function Transcript({
       </div>
     );
   }
-  const messages = snapshot?.messages ?? [];
+  const messages = snapshot === undefined ? [] : chatMessages(snapshot.chat);
   if (messages.length === 0 && runtime.recentEvents.length === 0) {
     return (
       <div className="empty-state">

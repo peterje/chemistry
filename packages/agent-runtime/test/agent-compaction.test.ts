@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import { AgentStreamEvent, SessionId, TranscriptPart } from "@chemistry/contracts/agent-protocol";
+import type * as Prompt from "effect/unstable/ai/Prompt";
+import { AgentStreamEvent, SessionId, chatMessages } from "@chemistry/contracts/agent-protocol";
 import { AgentService } from "@chemistry/agent-runtime/agent-service";
 import { AgentServiceLive } from "@chemistry/agent-runtime/agent-service-live";
 import {
@@ -23,6 +24,9 @@ const isCompactionRequest = (
   const first = request.prompt.content[0];
   return first?.role === "system" && first.content.includes("You compact conversation history");
 };
+
+const messageParts = (message: Prompt.Message): ReadonlyArray<Prompt.Part> =>
+  message.role === "system" ? [] : message.content;
 
 const send = (agent: AgentService["Service"], sessionId: SessionId, text: string) =>
   agent.sendMessage(sessionId, text).pipe(Stream.runDrain);
@@ -48,7 +52,8 @@ describe("non-destructive chat compaction", () => {
         }
 
         const before = yield* agent.getSession(sessionId);
-        expect(before.messages).toHaveLength(10);
+        const beforeMessages = chatMessages(before.chat);
+        expect(beforeMessages).toHaveLength(10);
         expect(before.compactions).toHaveLength(0);
 
         const result = yield* agent.compactSession(sessionId);
@@ -56,14 +61,15 @@ describe("non-destructive chat compaction", () => {
         expect(result.reason).toBe("manual");
 
         const after = yield* agent.getSession(sessionId);
-        expect(after.messages).toEqual(before.messages);
+        const afterMessages = chatMessages(after.chat);
+        expect(afterMessages).toEqual(beforeMessages);
         expect(after.compactions).toHaveLength(1);
         expect(after.compactions[0]?.summary).toBe("Durable concise summary.");
         expect(after.stats.rawMessageCount).toBe(10);
         expect(after.stats.modelMessageCount).toBe(7);
         expect(after.stats.estimatedModelTokens).toBeLessThan(before.stats.estimatedModelTokens);
-        expect(after.compactions[0]?.toMessageId).toBe(before.messages[3]?.id);
-        expect(after.messages.slice(-6)).toEqual(before.messages.slice(-6));
+        expect(after.compactions[0]?.toMessageId).toBe(beforeMessages[3]?.id);
+        expect(afterMessages.slice(-6)).toEqual(beforeMessages.slice(-6));
 
         yield* send(agent, sessionId, "Use the rehydrated summary.");
         const requests = yield* observedModel.requests();
@@ -162,15 +168,12 @@ describe("non-destructive chat compaction", () => {
         expect(safeAttempt.compacted).toBe(true);
 
         const snapshot = yield* agent.getSession(sessionId);
+        const messages = chatMessages(snapshot.chat);
         const overlay = snapshot.compactions.at(-1);
-        expect(overlay?.toMessageId).toBe(snapshot.messages[3]?.id);
-        const covered = snapshot.messages.slice(0, 4);
-        expect(
-          covered.flatMap((message) => message.parts).some(TranscriptPart.guards.ToolCall),
-        ).toBe(true);
-        expect(
-          covered.flatMap((message) => message.parts).some(TranscriptPart.guards.ToolResult),
-        ).toBe(true);
+        expect(overlay?.toMessageId).toBe(messages[3]?.id);
+        const coveredParts = messages.slice(0, 4).flatMap((entry) => messageParts(entry.message));
+        expect(coveredParts.some((part) => part.type === "tool-call")).toBe(true);
+        expect(coveredParts.some((part) => part.type === "tool-result")).toBe(true);
       }).pipe(Effect.provide(runtime)),
     );
   });

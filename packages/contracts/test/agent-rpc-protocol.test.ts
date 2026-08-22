@@ -8,10 +8,11 @@ import {
   AgentRpcError,
   AgentRpcs,
   AgentStreamEvent,
+  ChatHistory,
   MessageId,
   SessionId,
-  TranscriptMessage,
-  TranscriptPart,
+  StreamMessage,
+  StreamMessagePart,
 } from "@chemistry/contracts/agent-protocol";
 
 const sendMessageRpc = AgentRpcs.requests.get("sendMessage");
@@ -44,17 +45,24 @@ describe("shared AgentRpcs schema and NDJSON serialization", () => {
     ).toBe(true);
   });
 
+  test("rejects Prompt history whose application metadata is misaligned", () => {
+    const decoded = Schema.decodeUnknownResult(ChatHistory)({
+      prompt: { content: [{ role: "user", content: "hello" }] },
+      metadata: [],
+    });
+    expect(Result.isFailure(decoded)).toBe(true);
+  });
+
   test("round-trips stream events and typed errors through schemas and NDJSON", () =>
     Effect.runPromise(
       Effect.gen(function* () {
-        const assistantMessage = TranscriptMessage.make({
-          id: MessageId.make("message-1"),
-          role: "assistant",
-          parts: [TranscriptPart.cases.Text.make({ text: "typed reply" })],
-          createdAt: 1,
-        });
         const event = AgentStreamEvent.cases.TurnCompleted.make({
-          assistantMessage,
+          assistantMessage: StreamMessage.make({
+            id: MessageId.make("message-1"),
+            role: "assistant",
+            parts: [StreamMessagePart.cases.Text.make({ text: "typed reply" })],
+            createdAt: 1,
+          }),
           stats: {
             rawMessageCount: 2,
             modelMessageCount: 2,
@@ -66,6 +74,22 @@ describe("shared AgentRpcs schema and NDJSON serialization", () => {
         const encodedEvent = yield* Schema.encodeUnknownEffect(AgentStreamEvent)(event);
         const decodedEvent = yield* Schema.decodeUnknownEffect(AgentStreamEvent)(encodedEvent);
         expect(decodedEvent).toEqual(event);
+        expect(encodedEvent).toEqual({
+          _tag: "TurnCompleted",
+          assistantMessage: {
+            id: "message-1",
+            role: "assistant",
+            parts: [{ _tag: "Text", text: "typed reply" }],
+            createdAt: 1,
+          },
+          stats: {
+            rawMessageCount: 2,
+            modelMessageCount: 2,
+            estimatedModelTokens: 12,
+            compactionCount: 0,
+            lastCompactedAt: null,
+          },
+        });
 
         const error = new AgentInferenceError({
           operation: "stream-text",

@@ -6,8 +6,9 @@ import {
   AgentContext,
   AgentStreamEvent,
   SessionId,
-  TranscriptPart,
+  chatMessages,
 } from "@chemistry/contracts/agent-protocol";
+import type * as Prompt from "effect/unstable/ai/Prompt";
 import { AgentService } from "@chemistry/agent-runtime/agent-service";
 import { AgentServiceLive } from "@chemistry/agent-runtime/agent-service-live";
 import {
@@ -25,11 +26,14 @@ const makeRuntime = (modelLayer: ReturnType<typeof makeTestLanguageModel>) => {
   return Layer.merge(agent, modelLayer);
 };
 
-const messageText = (parts: ReadonlyArray<TranscriptPart>): string =>
-  parts
-    .filter(TranscriptPart.guards.Text)
+const messageText = (message: Prompt.Message | undefined): string => {
+  if (message === undefined) return "";
+  if (message.role === "system") return message.content;
+  return message.content
+    .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
+};
 
 describe("durable message sending and context", () => {
   test("persists transcript history and isolates sessions", () => {
@@ -47,14 +51,12 @@ describe("durable message sending and context", () => {
         const reloadedAlpha = yield* agent.getSession(alpha);
         const untouchedBeta = yield* agent.getSession(beta);
 
-        expect(reloadedAlpha.messages).toHaveLength(2);
-        expect(reloadedAlpha.messages.map((message) => message.role)).toEqual([
-          "user",
-          "assistant",
-        ]);
-        expect(messageText(reloadedAlpha.messages[0]?.parts ?? [])).toBe("hello alpha");
-        expect(messageText(reloadedAlpha.messages[1]?.parts ?? [])).toBe("reply-1");
-        expect(untouchedBeta.messages).toHaveLength(0);
+        const alphaMessages = chatMessages(reloadedAlpha.chat);
+        expect(alphaMessages).toHaveLength(2);
+        expect(alphaMessages.map((entry) => entry.message.role)).toEqual(["user", "assistant"]);
+        expect(messageText(alphaMessages[0]?.message)).toBe("hello alpha");
+        expect(messageText(alphaMessages[1]?.message)).toBe("reply-1");
+        expect(chatMessages(untouchedBeta.chat)).toHaveLength(0);
       }).pipe(Effect.provide(runtime)),
     );
   });
@@ -84,7 +86,7 @@ describe("durable message sending and context", () => {
 
         const snapshot = yield* agent.getSession(sessionId);
         expect(snapshot.context).toEqual(context);
-        expect(messageText(snapshot.messages[1]?.parts ?? [])).toBe("context-seen");
+        expect(messageText(chatMessages(snapshot.chat)[1]?.message)).toBe("context-seen");
 
         const requests = yield* observedModel.requests();
         expect(requests).toHaveLength(1);
@@ -114,7 +116,7 @@ describe("durable message sending and context", () => {
           expect(error.operation).toBe("empty-model-stream");
         }
         const snapshot = yield* agent.getSession(sessionId);
-        expect(snapshot.messages.map((message) => message.role)).toEqual(["user"]);
+        expect(chatMessages(snapshot.chat).map((entry) => entry.message.role)).toEqual(["user"]);
         const requests = yield* observedModel.requests();
         expect(requests).toHaveLength(1);
         expect(requests[0]?.tools.length).toBeGreaterThan(0);

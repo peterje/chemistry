@@ -26,7 +26,7 @@ export const agentTurnExecutorLayer = (modelName: string, faultMode: TurnExecuto
                 toolStepLimit: defaultAgentConfiguration.maxToolSteps,
                 contextStrategy: "durable-session-at-phase-start",
                 context: session.context,
-                historyMessageIds: session.messages.map((message) => message.id),
+                historyMessageIds: session.chat.metadata.map((message) => message.id),
                 compactionIds: session.compactions.map((compaction) => compaction.id),
                 submittedAt: input.submittedAt,
               }),

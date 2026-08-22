@@ -18,6 +18,7 @@ import {
   RuntimeServerFrame,
   SessionId,
   SubmissionId,
+  chatMessages,
   type RuntimeServerFrame as RuntimeServerFrameType,
   type SessionId as SessionIdType,
 } from "@chemistry/contracts/agent-protocol";
@@ -326,11 +327,11 @@ if (!live) {
         .sendMessage({ sessionId, prompt: "Reply with: acknowledged" })
         .pipe(Stream.runDrain);
       const before = yield* client.getSession({ sessionId });
-      expect(before.messages.length).toBeGreaterThanOrEqual(8);
+      expect(before.chat.prompt.content.length).toBeGreaterThanOrEqual(8);
       const compaction = yield* client.compactSession({ sessionId });
       expect(compaction.compacted).toBe(true);
       const after = yield* client.getSession({ sessionId });
-      expect(after.messages).toEqual(before.messages);
+      expect(after.chat).toEqual(before.chat);
       expect(after.compactions.length).toBeGreaterThan(0);
       expect(after.stats.modelMessageCount).toBeLessThan(after.stats.rawMessageCount);
     }).pipe(Effect.provide(protocol)),
@@ -489,7 +490,7 @@ if (!live) {
       expect((yield* client.updateContext({ sessionId, context: updatedContext })).context).toEqual(
         updatedContext,
       );
-      expect((yield* client.getSession({ sessionId })).messages.length).toBe(2);
+      expect((yield* client.getSession({ sessionId })).chat.prompt.content.length).toBe(2);
       expect((yield* client.getRuntime({ sessionId })).activeOperation).toBeNull();
       yield* closeRuntime(hibernation.connection);
       yield* closeRuntime(invalid.connection);
@@ -587,8 +588,9 @@ if (!live) {
         Array.from({ length: result.terminal.sequence + 1 }, (_, index) => index),
       );
       const transcript = yield* client.getSession({ sessionId });
-      expect(transcript.messages.filter((message) => message.role === "user").length).toBe(1);
-      expect(transcript.messages.filter((message) => message.role === "assistant").length).toBe(1);
+      const messages = chatMessages(transcript.chat);
+      expect(messages.filter((entry) => entry.message.role === "user").length).toBe(1);
+      expect(messages.filter((entry) => entry.message.role === "assistant").length).toBe(1);
       expect((yield* client.getRuntime({ sessionId })).activeOperation).toBeNull();
       yield* closeRuntime(resumed.connection);
     }).pipe(Effect.provide(protocol)),

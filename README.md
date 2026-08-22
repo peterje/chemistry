@@ -77,7 +77,7 @@ The runtime still supports:
 - progressive native Workers AI responses;
 - durable editable system prompt and memory;
 - schema-defined `lookup_project_fact` tool calls with a five-step bound;
-- immutable raw transcript history;
+- immutable raw chat history serialized with Effect AI's canonical `Prompt` schema;
 - non-destructive summary overlays and tool-safe compaction boundaries;
 - session isolation by named Durable Object.
 

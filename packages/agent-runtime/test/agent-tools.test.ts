@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import { AgentStreamEvent, SessionId, TranscriptPart } from "@chemistry/contracts/agent-protocol";
+import type * as Prompt from "effect/unstable/ai/Prompt";
+import { AgentStreamEvent, SessionId, chatMessages } from "@chemistry/contracts/agent-protocol";
 import { AgentService } from "@chemistry/agent-runtime/agent-service";
 import { AgentServiceLive } from "@chemistry/agent-runtime/agent-service-live";
 import {
@@ -16,6 +17,9 @@ const makeRuntime = (modelLayer: ReturnType<typeof makeTestLanguageModel>) => {
   const dependencies = Layer.mergeAll(InMemorySessionStore, DeterministicMessageIds, modelLayer);
   return Layer.merge(AgentServiceLive.pipe(Layer.provide(dependencies)), modelLayer);
 };
+
+const messageParts = (message: Prompt.Message): ReadonlyArray<Prompt.Part> =>
+  message.role === "system" ? [] : message.content;
 
 const requiredToolCall = (index: number) => [
   {
@@ -60,15 +64,16 @@ describe("typed tool calling", () => {
         });
 
         const snapshot = yield* agent.getSession(sessionId);
-        expect(snapshot.messages.map((message) => message.role)).toEqual([
+        const messages = chatMessages(snapshot.chat);
+        expect(messages.map((entry) => entry.message.role)).toEqual([
           "user",
           "assistant",
           "tool",
           "assistant",
         ]);
-        const storedToolResult = snapshot.messages
-          .flatMap((message) => message.parts)
-          .find(TranscriptPart.guards.ToolResult);
+        const storedToolResult = messages
+          .flatMap((entry) => messageParts(entry.message))
+          .find((part) => part.type === "tool-result");
         expect(storedToolResult?.isFailure).toBe(false);
 
         const requests = yield* observedModel.requests();
@@ -98,8 +103,9 @@ describe("typed tool calling", () => {
         expect(yield* observedModel.requests()).toHaveLength(5);
 
         const snapshot = yield* agent.getSession(sessionId);
-        expect(snapshot.messages).toHaveLength(11);
-        expect(snapshot.messages.at(-1)?.role).toBe("tool");
+        const messages = chatMessages(snapshot.chat);
+        expect(messages).toHaveLength(11);
+        expect(messages.at(-1)?.message.role).toBe("tool");
       }).pipe(Effect.provide(runtime)),
     );
   });

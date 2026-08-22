@@ -1,28 +1,25 @@
 import * as Prompt from "effect/unstable/ai/Prompt";
-import {
-  TranscriptPart,
-  type Compaction,
-  type TranscriptMessage,
-} from "@chemistry/contracts/agent-protocol";
+import type { ChatMessage, Compaction } from "@chemistry/contracts/agent-protocol";
 import type { StoredSession } from "./session-store.ts";
 
 /** Input required to summarize the next eligible raw transcript range. */
 export interface CompactionPlan {
   /** First raw message covered by the resulting overlay. */
-  readonly fromMessage: TranscriptMessage;
+  readonly fromMessage: ChatMessage;
   /** Last raw message covered by the resulting overlay. */
-  readonly toMessage: TranscriptMessage;
+  readonly toMessage: ChatMessage;
   /** Total raw messages covered by the resulting overlay. */
   readonly sourceMessageCount: number;
   /** Prompt asking the model to combine prior summary and newly eligible history. */
   readonly prompt: Prompt.Prompt;
 }
 
-const containsToolCall = (message: TranscriptMessage): boolean =>
-  message.parts.some(TranscriptPart.guards.ToolCall);
+const containsToolCall = (entry: ChatMessage): boolean =>
+  entry.message.role === "assistant" &&
+  entry.message.content.some((part) => part.type === "tool-call");
 
 const safeEndExclusive = (
-  messages: ReadonlyArray<TranscriptMessage>,
+  messages: ReadonlyArray<ChatMessage>,
   retainRecentMessages: number,
 ): number => {
   let endExclusive = Math.max(0, messages.length - retainRecentMessages);
@@ -30,8 +27,8 @@ const safeEndExclusive = (
     const previous = messages[endExclusive - 1];
     const next = messages[endExclusive];
     if (
-      next?.role === "tool" ||
-      previous?.role === "tool" ||
+      next?.message.role === "tool" ||
+      previous?.message.role === "tool" ||
       (previous !== undefined && containsToolCall(previous))
     ) {
       endExclusive -= 1;
@@ -43,23 +40,39 @@ const safeEndExclusive = (
 };
 
 const overlayEndIndex = (
-  messages: ReadonlyArray<TranscriptMessage>,
+  messages: ReadonlyArray<ChatMessage>,
   overlay: Compaction | undefined,
 ): number => {
   if (overlay === undefined) return -1;
   return messages.findIndex((message) => message.id === overlay.toMessageId);
 };
 
-const renderPart = (part: TranscriptPart): string =>
-  TranscriptPart.match(part, {
-    Text: ({ text }) => text,
-    ToolCall: ({ name, input }) => `[tool call ${name}] ${JSON.stringify(input)}`,
-    ToolResult: ({ name, output, isFailure }) =>
-      `[tool result ${name}${isFailure ? " failed" : ""}] ${JSON.stringify(output)}`,
-  });
+const renderPart = (part: Prompt.Part): string => {
+  switch (part.type) {
+    case "text":
+    case "reasoning":
+      return part.text;
+    case "file":
+      return `[file ${part.fileName ?? part.mediaType}]`;
+    case "tool-call":
+      return `[tool call ${part.name}] ${JSON.stringify(part.params)}`;
+    case "tool-result":
+      return `[tool result ${part.name}${part.isFailure ? " failed" : ""}] ${JSON.stringify(part.result)}`;
+    case "tool-approval-request":
+      return `[tool approval requested ${part.toolCallId}]`;
+    case "tool-approval-response":
+      return `[tool approval ${part.approved ? "granted" : "denied"}] ${part.reason ?? ""}`;
+  }
+};
 
-const renderMessage = (message: TranscriptMessage): string =>
-  `${message.role.toUpperCase()}: ${message.parts.map(renderPart).join("\n")}`;
+const renderMessage = (entry: ChatMessage): string => {
+  const { message } = entry;
+  const content =
+    message.role === "system"
+      ? message.content
+      : message.content.map((part) => renderPart(part)).join("\n");
+  return `${message.role.toUpperCase()}: ${content}`;
+};
 
 /** Build the next safe, non-overlapping compaction plan, if history is eligible. */
 export const buildCompactionPlan = (

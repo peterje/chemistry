@@ -79,7 +79,7 @@ function ChatPage({ sessionId }: Readonly<{ sessionId: SessionIdType }>) {
   useEffect(() => {
     const container = conversationScroll.current;
     if (container !== null) container.scrollTop = container.scrollHeight;
-  }, [runtime.snapshot.lastSequence, snapshot?.messages.length]);
+  }, [runtime.snapshot.lastSequence, snapshot?.chat.metadata.length]);
 
   return (
     <main className={desktopSidebarOpen ? "chat-app" : "chat-app sidebar-collapsed"}>
