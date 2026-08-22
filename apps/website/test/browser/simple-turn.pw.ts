@@ -99,6 +99,29 @@ test("canonical chat routing persists history and ACKs a real model turn", async
   );
 });
 
+test("reload reconnects to an in-flight durable stream before it completes", async ({ page }) => {
+  const prompt =
+    "Call lookup_project_fact with topic protocol, then explain its result in ten concise bullet points.";
+
+  await openNewChat(page);
+  await sendMessage(page, prompt);
+  await expect(page.locator(".live-turn .message-user .user-text")).toHaveText(prompt, {
+    timeout: 15_000,
+  });
+  await expect(page.locator("[data-runtime-status='completed']")).toHaveCount(0);
+
+  await page.reload();
+
+  await expect(page.locator(".live-turn .message-user .user-text")).toHaveText(prompt, {
+    timeout: 5_000,
+  });
+  await expect(
+    page.locator("[data-runtime-status='live'], [data-runtime-status='recovering']"),
+  ).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("[data-runtime-status='completed']")).toHaveCount(0);
+  await expect(page.locator("[data-runtime-status='completed']")).toBeVisible({ timeout: 90_000 });
+});
+
 test("the configured model completes typed tool activity in the chat UI", async ({ page }) => {
   const frames: Array<ObservedFrame> = [];
   page.on("websocket", (socket) => observeFrames(socket, frames));

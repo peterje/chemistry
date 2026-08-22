@@ -29,7 +29,7 @@ export function Transcript({
       </div>
     );
   }
-  if (snapshot === undefined) {
+  if (snapshot === undefined && runtime.recentEvents.length === 0) {
     return (
       <div className="transcript-shell transcript-loading" aria-label="Loading conversation">
         <span />
@@ -38,7 +38,8 @@ export function Transcript({
       </div>
     );
   }
-  if (snapshot.messages.length === 0 && runtime.recentEvents.length === 0) {
+  const messages = snapshot?.messages ?? [];
+  if (messages.length === 0 && runtime.recentEvents.length === 0) {
     return (
       <div className="empty-state">
         <div className="empty-mark" aria-hidden="true">
@@ -52,7 +53,7 @@ export function Transcript({
   return (
     <div className="transcript-shell">
       <ol className="transcript">
-        {snapshot.messages.map((message) => (
+        {messages.map((message) => (
           <TranscriptRow key={message.id} message={message} />
         ))}
       </ol>
