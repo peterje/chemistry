@@ -7,6 +7,7 @@ import {
   type SessionId,
   type SubmissionId as SubmissionIdType,
 } from "../shared/agent-protocol.ts";
+import { LOCAL_AGENT_BACKEND_PORT } from "../shared/local-development.ts";
 import { decodeRuntimeServerFrame, encodeRuntimeClientFrame } from "../shared/runtime-protocol.ts";
 import {
   applyRuntimeServerFrame,
@@ -20,6 +21,16 @@ export type { RuntimeConnectionStatus, RuntimeSocketSnapshot } from "./runtime-c
 const MAX_RECONNECT_ATTEMPTS = 8;
 const MAX_RECONNECT_DELAY_MS = 10_000;
 const PING_INTERVAL_MS = 20_000;
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** Build the runtime socket URL, bypassing the local Website worker's unsupported upgrade proxy. */
+export const runtimeSocketUrl = (locationHref: string, sessionId: SessionId): string => {
+  const url = new URL("/ws", locationHref);
+  if (LOCAL_HOSTNAMES.has(url.hostname)) url.port = String(LOCAL_AGENT_BACKEND_PORT);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.searchParams.set("sessionId", sessionId);
+  return url.toString();
+};
 
 /** Browser adapter implementing bounded reconnect, resume, replay dedupe, and liveness. */
 export class ResumableAgentSocket {
@@ -29,6 +40,7 @@ export class ResumableAgentSocket {
   #snapshot = initialRuntimeSocketSnapshot();
   #closed = false;
   #reconnectAttempt = 0;
+  #connectTimer: number | undefined;
   #reconnectTimer: number | undefined;
   #pingTimer: number | undefined;
 
@@ -46,31 +58,36 @@ export class ResumableAgentSocket {
     return () => this.#listeners.delete(listener);
   };
 
-  /** Open the same-origin hibernatable WebSocket and begin resume negotiation. */
+  /** Open the hibernatable WebSocket and begin resume negotiation. */
   connect = (): void => {
-    if (this.#closed || this.#socket !== undefined) return;
+    if (this.#socket !== undefined || this.#connectTimer !== undefined) return;
+    this.#closed = false;
     this.#setSnapshot({ ...this.#snapshot, status: "connecting", error: null });
-    const url = new URL("/ws", window.location.href);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    url.searchParams.set("sessionId", this.#sessionId);
-    const socket = new WebSocket(url);
-    this.#socket = socket;
-    socket.addEventListener("message", (event) => {
-      const encoded = Schema.decodeUnknownResult(Schema.String)(event.data);
-      if (Result.isFailure(encoded)) {
-        this.#fail("Received a binary runtime frame");
-        return;
-      }
-      void this.#handleMessage(encoded.success);
-    });
-    socket.addEventListener("close", () => {
-      if (this.#socket === socket) this.#socket = undefined;
-      this.#clearPing();
-      if (!this.#closed) this.#scheduleReconnect();
-    });
-    socket.addEventListener("error", () => {
-      this.#setSnapshot({ ...this.#snapshot, error: "WebSocket transport error" });
-    });
+    this.#connectTimer = window.setTimeout(() => {
+      this.#connectTimer = undefined;
+      if (this.#closed || this.#socket !== undefined) return;
+      const socket = new WebSocket(runtimeSocketUrl(window.location.href, this.#sessionId));
+      this.#socket = socket;
+      socket.addEventListener("message", (event) => {
+        if (this.#socket !== socket) return;
+        const encoded = Schema.decodeUnknownResult(Schema.String)(event.data);
+        if (Result.isFailure(encoded)) {
+          this.#fail("Received a binary runtime frame");
+          return;
+        }
+        void this.#handleMessage(socket, encoded.success);
+      });
+      socket.addEventListener("close", () => {
+        if (this.#socket !== socket) return;
+        this.#socket = undefined;
+        this.#clearPing();
+        if (!this.#closed) this.#scheduleReconnect();
+      });
+      socket.addEventListener("error", () => {
+        if (this.#socket !== socket) return;
+        this.#setSnapshot({ ...this.#snapshot, error: "WebSocket transport error" });
+      });
+    }, 0);
   };
 
   /** Submit one idempotent logical turn when the connection is open. */
@@ -84,19 +101,24 @@ export class ResumableAgentSocket {
     return submissionId;
   };
 
-  /** Permanently close this adapter and cancel reconnect/liveness timers. */
+  /** Close the current connection and timers; a later {@link connect} starts it again. */
   close = (): void => {
     this.#closed = true;
+    if (this.#connectTimer !== undefined) window.clearTimeout(this.#connectTimer);
+    this.#connectTimer = undefined;
     if (this.#reconnectTimer !== undefined) window.clearTimeout(this.#reconnectTimer);
     this.#reconnectTimer = undefined;
+    this.#reconnectAttempt = 0;
     this.#clearPing();
-    this.#socket?.close(1000, "session-changed");
+    const socket = this.#socket;
     this.#socket = undefined;
+    socket?.close(1000, "session-changed");
     this.#setSnapshot({ ...this.#snapshot, status: "disconnected" });
   };
 
-  async #handleMessage(encoded: string): Promise<void> {
+  async #handleMessage(socket: WebSocket, encoded: string): Promise<void> {
     const decoded = await Effect.runPromise(decodeRuntimeServerFrame(encoded).pipe(Effect.result));
+    if (this.#socket !== socket) return;
     if (Result.isFailure(decoded)) {
       this.#fail(decoded.failure.message);
       return;

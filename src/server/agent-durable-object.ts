@@ -1,6 +1,5 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Clock from "effect/Clock";
-import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
@@ -71,9 +70,7 @@ export default class AgentSession extends Cloudflare.DurableObject<AgentSession>
   Effect.gen(function* () {
     const state = yield* Cloudflare.DurableObjectState;
     const ai = yield* Cloudflare.Workers.AI();
-    const modelName = yield* Config.string("WORKERS_AI_MODEL").pipe(
-      Effect.orElseSucceed(() => DEFAULT_WORKERS_AI_MODEL),
-    );
+    const modelName = DEFAULT_WORKERS_AI_MODEL;
     const languageModel = ai.model({
       model: modelName,
       parameters: { temperature: 0.2, maxTokens: 1_024 },

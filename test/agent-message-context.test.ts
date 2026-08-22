@@ -97,6 +97,31 @@ describe("durable message sending and context", () => {
     );
   });
 
+  test("fails hard when a tool-capable model stream has no semantic output", () => {
+    const model = makeTestLanguageModel(() => []);
+    const runtime = makeRuntime(model);
+
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        const agent = yield* AgentService;
+        const observedModel = yield* TestLanguageModel;
+        const sessionId = SessionId.make("empty-stream-failure");
+
+        const error = yield* agent.sendMessage(sessionId, "hi").pipe(Stream.runDrain, Effect.flip);
+
+        expect(error._tag).toBe("AgentInferenceError");
+        if (error._tag === "AgentInferenceError") {
+          expect(error.operation).toBe("empty-model-stream");
+        }
+        const snapshot = yield* agent.getSession(sessionId);
+        expect(snapshot.messages.map((message) => message.role)).toEqual(["user"]);
+        const requests = yield* observedModel.requests();
+        expect(requests).toHaveLength(1);
+        expect(requests[0]?.tools.length).toBeGreaterThan(0);
+      }).pipe(Effect.provide(runtime)),
+    );
+  });
+
   test("streams ordered turn events and returns the stored completion", () => {
     const model = makeTestLanguageModel(() => textResponse("streamed answer"));
     const runtime = makeRuntime(model);

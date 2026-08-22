@@ -106,6 +106,15 @@ const nextRuntimeFrame = Effect.fn("Live.nextRuntimeFrame")(function* (
     ),
   );
   if (item._tag === "Failure") return yield* new LiveSocketFailure({ message: item.message });
+  if (item.frame._tag === "StreamEvent") {
+    const acknowledgement = yield* encodeRuntimeClientFrame(
+      RuntimeClientFrame.cases.StreamAck.make({
+        streamId: item.frame.durableEvent.streamId,
+        sequence: item.frame.durableEvent.sequence,
+      }),
+    );
+    yield* Effect.sync(() => connection.socket.send(acknowledgement));
+  }
   return item.frame;
 });
 
@@ -197,6 +206,30 @@ const collectThroughTerminal = Effect.fn("Live.collectThroughTerminal")(function
 
 const streamSequences = (frames: ReadonlyArray<RuntimeServerFrameType>): ReadonlyArray<number> =>
   frames.filter(RuntimeServerFrame.guards.StreamEvent).map((frame) => frame.durableEvent.sequence);
+
+const waitForDeploymentMarker = Effect.fn("Live.waitForDeploymentMarker")(function* (
+  backendUrl: string,
+  expected: string,
+) {
+  const url = new URL("/deployment-marker", backendUrl);
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const observed = yield* Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(url);
+        return response.ok ? await response.text() : "";
+      },
+      catch: (cause) =>
+        new LiveSocketFailure({
+          message: cause instanceof Error ? cause.message : "Deployment marker request failed",
+        }),
+    });
+    if (observed === expected) return;
+    yield* Effect.sleep("1 second");
+  }
+  return yield* new LiveSocketFailure({
+    message: `Deployment marker ${expected} did not become active`,
+  });
+});
 
 const live = process.env.RUN_LIVE_E2E === "1";
 
@@ -442,7 +475,8 @@ if (!live) {
       const client = yield* RpcClient.make(AgentRpcs);
       const markerPath = new URL("../src/server/deployment-marker.ts", import.meta.url).pathname;
       const originalMarker = yield* Effect.promise(() => Bun.file(markerPath).text());
-      const faultMarker = `/** Build marker changed only by the credentialed redeploy recovery test. */\nexport const DEPLOYMENT_MARKER = "fault-${crypto.randomUUID()}";\n\n/** Compile-time fault gate used only by the credentialed isolate-loss test deployment. */\nexport const LIVE_CHAOS_ABORT_AFTER_FIRST_DELTA = true;\n`;
+      const faultMarkerValue = `fault-${crypto.randomUUID()}`;
+      const faultMarker = `/** Build marker changed only by the credentialed redeploy recovery test. */\nexport const DEPLOYMENT_MARKER = "${faultMarkerValue}";\n\n/** Compile-time fault gate used only by the credentialed isolate-loss test deployment. */\nexport const LIVE_CHAOS_ABORT_AFTER_FIRST_DELTA = true;\n`;
       const faultDeployment = yield* Effect.gen(function* () {
         yield* Effect.promise(() => Bun.write(markerPath, faultMarker));
         return yield* deploy(Stack);
@@ -453,6 +487,7 @@ if (!live) {
       );
       expect(faultDeployment.websiteUrl).toBe(websiteUrl);
       expect(faultDeployment.backendUrl).toBe(backendUrl);
+      yield* waitForDeploymentMarker(backendUrl, faultMarkerValue);
 
       const sessionId = SessionId.make(`live-redeploy-${crypto.randomUUID()}`);
       const initial = yield* resumeEventually(backendUrl, sessionId, -1);
@@ -482,7 +517,8 @@ if (!live) {
       const oldBootId = initial.probe.runtime.bootId;
       yield* closeRuntime(initial.connection);
 
-      const recoveryMarker = `/** Build marker changed only by the credentialed redeploy recovery test. */\nexport const DEPLOYMENT_MARKER = "recovery-${crypto.randomUUID()}";\n\n/** Compile-time fault gate used only by the credentialed isolate-loss test deployment. */\nexport const LIVE_CHAOS_ABORT_AFTER_FIRST_DELTA = false;\n`;
+      const recoveryMarkerValue = `recovery-${crypto.randomUUID()}`;
+      const recoveryMarker = `/** Build marker changed only by the credentialed redeploy recovery test. */\nexport const DEPLOYMENT_MARKER = "${recoveryMarkerValue}";\n\n/** Compile-time fault gate used only by the credentialed isolate-loss test deployment. */\nexport const LIVE_CHAOS_ABORT_AFTER_FIRST_DELTA = false;\n`;
       const redeployed = yield* Effect.gen(function* () {
         yield* Effect.promise(() => Bun.write(markerPath, recoveryMarker));
         return yield* deploy(Stack);
@@ -493,6 +529,7 @@ if (!live) {
       );
       expect(redeployed.websiteUrl).toBe(websiteUrl);
       expect(redeployed.backendUrl).toBe(backendUrl);
+      yield* waitForDeploymentMarker(backendUrl, recoveryMarkerValue);
       yield* Effect.sleep("20 seconds");
 
       const resumed = yield* resumeEventually(backendUrl, sessionId, partialSequence);

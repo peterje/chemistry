@@ -12,6 +12,7 @@ import * as RpcClient from "effect/unstable/rpc/RpcClient";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 import { AgentRpcs, SessionId } from "../shared/agent-protocol.ts";
+import { LOCAL_AGENT_BACKEND_PORT } from "../shared/local-development.ts";
 import AgentSession from "./agent-durable-object.ts";
 import { DEPLOYMENT_MARKER } from "./deployment-marker.ts";
 
@@ -23,6 +24,10 @@ export default class AgentBackend extends Cloudflare.RpcWorker<AgentBackend>()(
   {
     main: import.meta.url,
     workersDev: true,
+    dev: {
+      port: LOCAL_AGENT_BACKEND_PORT,
+      strictPort: true,
+    },
     schema: AgentRpcs,
   },
   Effect.gen(function* () {
@@ -93,6 +98,9 @@ export default class AgentBackend extends Cloudflare.RpcWorker<AgentBackend>()(
       return Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const url = new URL(request.url, "https://agent-backend.invalid");
+        if (url.pathname.endsWith("/deployment-marker")) {
+          return HttpServerResponse.text(DEPLOYMENT_MARKER);
+        }
         if (url.pathname.endsWith("/ws")) {
           const decoded = decodeSessionId(url.searchParams.get("sessionId"));
           if (Result.isFailure(decoded)) {

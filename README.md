@@ -104,10 +104,10 @@ The runtime still supports:
 No OpenAI, Anthropic, or other model-provider key is used. The default model is:
 
 ```text
-@cf/meta/llama-3.3-70b-instruct-fp8-fast
+@cf/zai-org/glm-5.2
 ```
 
-`WORKERS_AI_MODEL` can override it at the composition root through Effect `Config`.
+The model is fixed at the composition root rather than accepted as an unchecked environment override. Changing it requires a code change and must pass the tool-contract browser and credentialed live suites; an empty semantic stream is a hard `AgentInferenceError`, never a fallback to a different request shape.
 
 ## Install and run
 
@@ -118,6 +118,8 @@ bun run deploy    # Cloudflare deployment
 bun run destroy   # remove deployed resources
 ```
 
+Local development pins the Website to `http://localhost:1337` and `AgentBackend` to `http://localhost:1338`. Because the local Website service-binding proxy cannot tunnel WebSocket upgrades, the browser adapter connects directly to port 1338 on localhost; deployed builds remain same-origin through `/ws`.
+
 In the UI, choose a session, update durable memory, and submit a turn. The runtime panel displays connection state, stream ID, sequence, operation/checkpoint, recovery attempt, and terminal reason. Reload or disconnect during a turn to exercise cursor replay.
 
 ## Verification
@@ -127,10 +129,12 @@ Local verification:
 ```bash
 bun install --frozen-lockfile
 bun run check
+bunx playwright install chromium # first browser-test run only
+bun run test:browser
 npx react-doctor@latest --verbose --scope changed --include-untracked
 ```
 
-The deterministic suite covers protocol bounds, persist-before-publish sequencing, replay races, cursor deduplication, durable FIFO ordering, duplicate admission, stale-owner fencing, partial continuation, transcript/runtime crash windows, stalls, OOM/reset and recovery budgets, terminal replay, retention, migration, client reload reconstruction, and prior message/context/tool/compaction behavior.
+The deterministic suite covers protocol bounds, persist-before-publish sequencing, replay races, cursor deduplication, durable FIFO ordering, duplicate admission, stale-owner fencing, partial continuation, transcript/runtime crash windows, stalls, OOM/reset and recovery budgets, terminal replay, retention, migration, client reload reconstruction, and prior message/context/tool/compaction behavior. The Playwright suite starts or reuses `bun run dev`, sends `hi` through the actual React UI, requires non-empty model text, observes browser WebSocket frames, requires live `StreamAck` traffic with no protocol or console transport error, waits for a completed terminal, and verifies the durable transcript. A second browser test requires the configured model to complete `lookup_project_fact` with typed `ToolCall` and `ToolResult` events plus a non-empty final answer.
 
 Credentialed Cloudflare chaos verification:
 
@@ -139,7 +143,7 @@ alchemy login
 bun run test:e2e
 ```
 
-The live suite deploys with Alchemy, exercises native Workers AI and RPC controls, disconnects mid-stream and resumes from a cursor, proves same-socket attachment wake after Hibernation API auto-responses, and performs two Worker source-hash updates around a controlled compile-time fault deployment. That fault deployment persists a deterministic partial and aborts its old isolate by alarm; the recovery deployment must continue it through a new native Workers AI call under a new generation. The baseline gate is `false`, and the test restores the source file after each deployment. The suite verifies one coherent terminal/transcript and destroys the stack in `afterAll`.
+The live suite deploys with Alchemy, exercises native Workers AI and RPC controls, ACKs every replay/live event with the browser protocol, disconnects mid-stream and resumes from a cursor, proves same-socket attachment wake after Hibernation API auto-responses, and performs two Worker source-hash updates around a controlled compile-time fault deployment. That fault deployment persists a deterministic partial and aborts its old isolate by alarm; the recovery deployment must continue it through a new native Workers AI call under a new generation. The baseline gate is `false`, and the test restores the source file after each deployment. The suite verifies one coherent terminal/transcript and destroys the stack in `afterAll`.
 
 Evidence is preserved in [`verification/`](verification/):
 

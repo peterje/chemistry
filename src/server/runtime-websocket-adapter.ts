@@ -125,7 +125,6 @@ const buildRuntimeWebSocketAdapter = Effect.fn("RuntimeWebSocketAdapter.make")(f
     durableEvent: DurableStreamEvent,
     replay: boolean,
   ) {
-    yield* send(socket, RuntimeServerFrame.cases.StreamEvent.make({ durableEvent, replay }));
     const attachment = decodeAttachment(socket);
     if (attachment !== undefined) {
       socket.serializeAttachment(
@@ -136,6 +135,7 @@ const buildRuntimeWebSocketAdapter = Effect.fn("RuntimeWebSocketAdapter.make")(f
         }),
       );
     }
+    yield* send(socket, RuntimeServerFrame.cases.StreamEvent.make({ durableEvent, replay }));
   });
 
   const broadcast = Effect.fn("RuntimeWebSocketAdapter.broadcast")(function* (
@@ -158,6 +158,8 @@ const buildRuntimeWebSocketAdapter = Effect.fn("RuntimeWebSocketAdapter.make")(f
             }
             return;
           }
+          yield* sendDurableEvent(socket, frame.durableEvent, false);
+          return;
         }
         if (frame._tag === "StreamTerminal" && gate?.streamId === frame.streamId) return;
         yield* send(socket, frame);

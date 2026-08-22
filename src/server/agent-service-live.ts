@@ -308,42 +308,68 @@ export const AgentServiceLive = Layer.effect(
         );
       }
 
-      return Stream.unwrap(
-        Effect.gen(function* () {
-          const captured = yield* Ref.make<ReadonlyArray<Response.AnyPart>>([]);
-          const responseStream = model
-            .streamText({
-              prompt,
-              toolkit: AgentToolkit,
-              toolChoice:
-                mode === "continue" || originalPrompt.includes("lookup_project_fact")
-                  ? "none"
-                  : "auto",
-            })
-            .pipe(
-              Stream.provide(AgentToolkitLive),
+      const hasResponseContent = (parts: ReadonlyArray<Response.AnyPart>): boolean =>
+        parts.some((part) => {
+          switch (part.type) {
+            case "text":
+              return part.text.length > 0;
+            case "text-delta":
+              return part.delta.length > 0;
+            case "tool-call":
+            case "tool-result":
+              return true;
+            default:
+              return false;
+          }
+        });
+
+      const streamResponse = (
+        includeToolkit: boolean,
+      ): Stream.Stream<AgentStreamEvent, AgentRpcError> =>
+        Stream.unwrap(
+          Effect.gen(function* () {
+            const captured = yield* Ref.make<ReadonlyArray<Response.AnyPart>>([]);
+            const modelStream = includeToolkit
+              ? model
+                  .streamText({
+                    prompt,
+                    toolkit: AgentToolkit,
+                    toolChoice: originalPrompt.includes("lookup_project_fact") ? "none" : "auto",
+                  })
+                  .pipe(Stream.provide(AgentToolkitLive))
+              : model.streamText({ prompt, toolChoice: "none" });
+            const responseStream = modelStream.pipe(
               Stream.mapError((cause) => inferenceError("stream-text", cause)),
               Stream.tap((part) => Ref.update(captured, (parts) => [...parts, part])),
               Stream.mapEffect(agentEventFromResponsePart),
               Stream.filter((event): event is AgentStreamEvent => event !== undefined),
             );
-          const continuation = Stream.unwrap(
-            Ref.get(captured).pipe(
-              Effect.flatMap((parts) =>
-                continueAfterResponse(
-                  active,
-                  originalPrompt,
-                  step,
-                  previousAssistant,
-                  parts,
-                  preferredAssistantId,
+            const continuation = Stream.unwrap(
+              Ref.get(captured).pipe(
+                Effect.flatMap((parts) =>
+                  !hasResponseContent(parts)
+                    ? Effect.fail(
+                        new AgentInferenceError({
+                          operation: "empty-model-stream",
+                          message: "Model stream completed without text or tool output",
+                        }),
+                      )
+                    : continueAfterResponse(
+                        active,
+                        originalPrompt,
+                        step,
+                        previousAssistant,
+                        parts,
+                        preferredAssistantId,
+                      ),
                 ),
               ),
-            ),
-          );
-          return Stream.concat(responseStream, continuation);
-        }),
-      );
+            );
+            return Stream.concat(responseStream, continuation);
+          }),
+        );
+
+      return streamResponse(mode === "fresh");
     }
 
     const prepareLegacyTurn = Effect.fn("AgentService.prepareLegacyTurn")(function* (
