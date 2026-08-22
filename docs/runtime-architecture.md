@@ -60,7 +60,7 @@ LIVE -> REPLAYING             reconnect with a high-water sequence
 LIVE -> CLOSED                transport loss; producer is unaffected
 ```
 
-On upgrade the server accepts the socket with the Hibernation API, stores a schema-versioned attachment, and sends `ResumeProbe`. The probe reports the current stream identity, latest durable sequence, operation state, and boot identity. The adapter registers the schema-encoded fixed `KeepAlive`/`KeepAliveAck` pair with Cloudflare's auto-response facility; those liveness frames keep the edge socket open without waking the object, while an ordinary typed `Ping` reaches the object and reports the handling boot ID. The client answers `ResumeAck(streamId, afterSequence)`. The server registers the connection as a live forwarder **before** reading the backlog, parks live events during the read, emits stored events in sequence, drains parked events through the same high-water filter, then sends `ResumeComplete` and switches to direct forwarding. Repeating an ACK is safe. The React transcript renders replayed in-flight events immediately and does not gate that live path on the separate transcript RPC, which may remain pending until the active turn terminalizes.
+On upgrade the server accepts the socket with the Hibernation API, stores a schema-versioned attachment, and sends `ResumeProbe`. The probe reports the current stream identity, latest durable sequence, operation state, and boot identity. The adapter registers the schema-encoded fixed `KeepAlive`/`KeepAliveAck` pair with Cloudflare's auto-response facility; those liveness frames keep the edge socket open without waking the object, while an ordinary typed `Ping` reaches the object and reports the handling boot ID. The client answers `ResumeAck(streamId, afterSequence)`. For active or interrupted work, the server registers the connection as a live forwarder **before** reading the backlog, parks live events during the read, emits stored events in sequence, drains parked events through the same high-water filter, then sends `ResumeComplete` and switches to direct forwarding. A completed stream instead sends `ResumeComplete` at its terminal high-water sequence followed immediately by `StreamTerminal`; its content already comes from the canonical persisted transcript, so replaying every completed delta would only duplicate rendering work and generate an ACK flood. Repeating an ACK is safe. The React transcript renders replayed in-flight events immediately and does not gate that live path on the separate transcript RPC, which may remain pending until the active turn terminalizes.
 
 Socket attachments contain only parsed connection identity, session identity, protocol version, and last acknowledged stream cursor. Durable stream state never depends on an in-memory socket map. A hibernation wake decodes the attachment and reconstructs the forwarder on the first message.
 
@@ -87,9 +87,9 @@ Limits are part of the interface, not implementation trivia:
 - maximum encoded client frame: 64 KiB;
 - maximum persisted events per stream: 2,048;
 - maximum encoded durable event payload: 60 KiB (leaving envelope headroom inside the 64 KiB frame);
-- maximum cumulative encoded stream payload: 128 KiB;
+- maximum cumulative encoded stream payload: 512 KiB;
 - completed stream grace retention: 24 hours;
-- maximum retained terminal streams: 8;
+- maximum retained terminal streams: 2;
 - maximum reconnect delay: 10 seconds;
 - live handoff pending buffer: 256 events; overflow forces reconnect/replay rather than dropping durable events.
 

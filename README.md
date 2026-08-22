@@ -54,7 +54,7 @@ The full state-machine and semantics contract is in [`docs/runtime-architecture.
 
 ### Connection and replay
 
-A socket upgrade is accepted through Cloudflare's Hibernation API. The server stores a versioned attachment and sends `ResumeProbe`; the client responds with `ResumeAck(streamId, afterSequence)`. The server parks live events before waiting for the ACK, drains durable backlog, deduplicates overlap through one high-water cursor, drains parked events, then sends `ResumeComplete`. A typed fixed keepalive pair is registered with Cloudflare's WebSocket auto-response facility, so browser liveness traffic keeps the edge connection open without waking the Durable Object.
+A socket upgrade is accepted through Cloudflare's Hibernation API. The server stores a versioned attachment and sends `ResumeProbe`; the client responds with `ResumeAck(streamId, afterSequence)`. For active or interrupted work, the server parks live events before waiting for the ACK, drains durable backlog, deduplicates overlap through one high-water cursor, drains parked events, then sends `ResumeComplete`. A completed turn skips event replay and immediately sends its durable terminal summary because the transcript RPC already returns its canonical persisted messages. A typed fixed keepalive pair is registered with Cloudflare's WebSocket auto-response facility, so browser liveness traffic keeps the edge connection open without waking the Durable Object.
 
 Events use a per-stream sequence beginning at zero. Each event is durably appended before it can be published. Cursor replay returns only events after the acknowledged sequence. Gaps force reconnect/replay rather than silent rendering.
 
@@ -88,9 +88,9 @@ The runtime still supports:
 | Catalog conversations                |                     200 |
 | Queued submissions                   |                      16 |
 | Client frame / durable event payload |             64 / 60 KiB |
-| Events / encoded bytes per stream    |         2,048 / 128 KiB |
+| Events / encoded bytes per stream    |         2,048 / 512 KiB |
 | Replay handoff buffer                |              256 events |
-| Retained terminal streams            |                       8 |
+| Retained terminal streams            |                       2 |
 | Completed-stream grace               |                24 hours |
 | Reconnect attempts / maximum delay   |          8 / 10 seconds |
 | Recovery attempts / work units       |               5 / 1,024 |

@@ -75,9 +75,15 @@ test("canonical chat routing persists history and ACKs a real model turn", async
   ).toEqual([]);
   expect(browserErrors.filter((message) => /WebSocket|Stream ACK/.test(message))).toEqual([]);
 
+  frames.length = 0;
   await page.reload();
   await expect(page).toHaveURL(firstPath);
   await expect(page.locator("[data-runtime-status='completed']")).toBeVisible({ timeout: 30_000 });
+  expect(
+    frames.filter(
+      (frame) => frame.direction === "received" && frame.payload.includes('"_tag":"StreamEvent"'),
+    ),
+  ).toEqual([]);
   await expect(page.locator(".message-user .message-body").last()).toHaveText("hi");
   await expect(page.locator(".message-assistant .markdown-content").last()).toHaveText(
     assistantText,

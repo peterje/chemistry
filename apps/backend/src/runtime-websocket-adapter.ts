@@ -280,6 +280,32 @@ const buildRuntimeWebSocketAdapter = Effect.fn("RuntimeWebSocketAdapter.make")(f
       return;
     }
 
+    const completedTerminal = yield* runtime.terminal(attachment.sessionId, selectedStreamId);
+    if (completedTerminal?.status === "completed") {
+      replayGates.delete(attachment.connectionId);
+      yield* send(
+        socket,
+        RuntimeServerFrame.cases.ResumeComplete.make({
+          streamId: selectedStreamId,
+          throughSequence: completedTerminal.sequence,
+        }),
+      );
+      yield* send(
+        socket,
+        RuntimeServerFrame.cases.StreamTerminal.make({
+          streamId: completedTerminal.streamId,
+          operationId: completedTerminal.operationId,
+          status: completedTerminal.status,
+          sequence: completedTerminal.sequence,
+          generation: completedTerminal.generation,
+          attempt: completedTerminal.attempt,
+          recoveryWork: completedTerminal.recoveryWork,
+          reason: completedTerminal.reason,
+        }),
+      );
+      return;
+    }
+
     const existingGate = replayGates.get(attachment.connectionId);
     const gate =
       existingGate?.streamId === selectedStreamId
