@@ -34,7 +34,8 @@ are ready when a new agent starts.
   `bun alchemy profile show`. This is the preferred local setup.
 - `CLOUDFLARE_API_TOKEN` and a valid 32-hex `CLOUDFLARE_ACCOUNT_ID` are primarily for CI
   and other non-interactive environments. Set `CI=1` when using environment credentials so
-  Alchemy does not try to prompt.
+  Alchemy does not try to prompt. Environment credentials take precedence over the stored
+  profile; unset invalid runtime variables before using OAuth profile credentials.
 - The app uses a remote Cloudflare state store (`Cloudflare.state()`) and native Workers AI
   (`@cf/zai-org/glm-5.2`), so either an authenticated local profile or environment
   credentials must grant access to the required account services.
