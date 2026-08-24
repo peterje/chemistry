@@ -136,6 +136,41 @@ describe("Effect-native durable execution", () => {
       }),
     ));
 
+  test("recovers a first-attempt stream-text abort instead of failing the turn", () =>
+    run(
+      Effect.gen(function* () {
+        const runtime = yield* DurableExecution;
+        const turns = yield* TurnExecutorTest;
+        const sessionId = SessionId.make("runtime-disconnect");
+        yield* turns.setFailure(
+          Option.some(
+            new AgentInferenceError({
+              operation: "stream-text",
+              message: "The operation was aborted",
+            }),
+          ),
+        );
+        const admission = yield* runtime.admit(
+          sessionId,
+          "hello",
+          SubmissionId.make("submission-disconnect"),
+        );
+        yield* runtime
+          .run(sessionId, admission.operation.operationId)
+          .pipe(Stream.runDrain, Effect.ignore);
+        const wake = yield* runtime.wake(sessionId);
+        expect(wake.recoverableOperationId).toBe(admission.operation.operationId);
+        expect((yield* runtime.terminal(sessionId, admission.operation.streamId))?.status).not.toBe(
+          "failed",
+        );
+        yield* turns.setFailure(Option.none());
+        yield* turns.setEvents([text("resumed after disconnect")]);
+        yield* runtime.recover(sessionId).pipe(Stream.runDrain);
+        const terminal = yield* runtime.terminal(sessionId, admission.operation.streamId);
+        expect(terminal?.status).toBe("completed");
+      }),
+    ));
+
   test("converges duplicate submissions and preserves durable FIFO order", () =>
     run(
       Effect.gen(function* () {

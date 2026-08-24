@@ -305,6 +305,9 @@ const errorMessage = (error: DurableExecutionError): string => error.message;
 const isInferenceStall = (error: DurableExecutionError): boolean =>
   error._tag === "AgentInferenceError" && error.operation === "inference-stall";
 
+const isStreamingTransportFailure = (error: DurableExecutionError): boolean =>
+  error._tag === "AgentInferenceError" && error.operation === "stream-text";
+
 const isMemoryLimitReset = (error: DurableExecutionError): boolean =>
   error.message.toLowerCase().includes("exceeded its memory limit");
 
@@ -1069,7 +1072,10 @@ export const makeDurableExecutionLayer = (
                 () => true,
                 (error) => {
                   const recoverable =
-                    streaming.attempt > 0 || isInferenceStall(error) || isMemoryLimitReset(error);
+                    streaming.attempt > 0 ||
+                    isInferenceStall(error) ||
+                    isStreamingTransportFailure(error) ||
+                    isMemoryLimitReset(error);
                   return Stream.unwrap(
                     recoverable
                       ? scheduleRecoveryAfterFailure(
