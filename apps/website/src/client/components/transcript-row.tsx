@@ -50,7 +50,7 @@ const renderPart = (part: Prompt.Part, key: string, assistant: boolean, user: bo
       );
     case "reasoning":
       return (
-        <details className="tool-activity" key={key}>
+        <details className="reasoning-activity" key={key}>
           <summary>Reasoning</summary>
           <p>{part.text}</p>
         </details>

@@ -143,7 +143,9 @@ test("the configured model completes typed tool activity in the chat UI", async 
     .poll(() => hasFrame(frames, "received", "ToolResult"), { timeout: 90_000 })
     .toBe(true);
   await expect(page.locator("[data-runtime-status='completed']")).toBeVisible({ timeout: 90_000 });
-  await expect(page.locator(".tool-activity").first()).toContainText(/lookup_project_fact/);
+  await expect(
+    page.locator(".tool-activity").filter({ hasText: /lookup_project_fact/ }),
+  ).toBeVisible();
   await expect(page.locator(".message-assistant .markdown-content").last()).toContainText(/\S/);
 
   expect(
