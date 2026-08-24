@@ -17,8 +17,14 @@ export function MessageComposer({
   const [prompt, setPrompt] = useState("");
 
   useEffect(() => {
-    if (runtime.status === "completed" || runtime.status === "failed") refreshSnapshot();
-  }, [refreshSnapshot, runtime.status, runtime.streamId]);
+    if (
+      runtime.status === "completed" ||
+      runtime.status === "failed" ||
+      runtime.checkpoint === "streaming"
+    ) {
+      refreshSnapshot();
+    }
+  }, [refreshSnapshot, runtime.status, runtime.streamId, runtime.checkpoint]);
 
   const submit = (event: React.SubmitEvent) => {
     event.preventDefault();

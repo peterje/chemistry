@@ -11,6 +11,7 @@ export function ChatSidebar({
   creating,
   createError,
   onClose,
+  onCollapse,
   onCreate,
 }: Readonly<{
   activeSessionId: SessionId;
@@ -18,6 +19,7 @@ export function ChatSidebar({
   creating: boolean;
   createError: string | null;
   onClose: () => void;
+  onCollapse: () => void;
   onCreate: () => void;
 }>) {
   const result = useAtomValue(chatListAtom);
@@ -42,7 +44,7 @@ export function ChatSidebar({
           <button
             type="button"
             className="sidebar-close"
-            onClick={onClose}
+            onClick={onCollapse}
             aria-label="Close chats"
           >
             ×

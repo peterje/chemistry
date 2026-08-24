@@ -9,6 +9,7 @@ import { ChatSidebar } from "../client/components/chat-sidebar.tsx";
 import { MessageComposer } from "../client/components/message-composer.tsx";
 import { Transcript } from "../client/components/transcript.tsx";
 import { chatListAtom, createDurableChat, sessionSnapshotAtom } from "../client/agent-client.ts";
+import { releaseRootChatCreation } from "../client/root-chat-creation.ts";
 import { useCreateChat } from "../client/use-create-chat.ts";
 import { useResumableAgent } from "../client/use-resumable-agent.ts";
 import { SessionId, type SessionId as SessionIdType } from "@chemistry/contracts/agent-protocol";
@@ -57,6 +58,10 @@ function ChatPage({ sessionId }: Readonly<{ sessionId: SessionIdType }>) {
     : undefined;
 
   useEffect(() => {
+    releaseRootChatCreation();
+  }, []);
+
+  useEffect(() => {
     let active = true;
     void Effect.runPromise(createDurableChat(sessionId).pipe(Effect.result)).then((result) => {
       if (!active) return;
@@ -89,6 +94,9 @@ function ChatPage({ sessionId }: Readonly<{ sessionId: SessionIdType }>) {
         creating={createChat.creating}
         createError={createChat.error}
         onClose={() => {
+          setSidebarOpen(false);
+        }}
+        onCollapse={() => {
           setSidebarOpen(false);
           setDesktopSidebarOpen(false);
         }}

@@ -156,11 +156,15 @@ export const applyRuntimeServerFrame = (
         action: "none",
       };
     }
-    case "ResumeComplete":
+    case "ResumeComplete": {
+      const terminal =
+        current.status === "completed" ||
+        current.status === "failed" ||
+        current.status === "interrupted";
       return {
         snapshot: {
           ...current,
-          status: "live",
+          status: terminal ? current.status : "live",
           streamId: frame.streamId,
           lastSequence: frame.throughSequence,
           error: null,
@@ -168,6 +172,7 @@ export const applyRuntimeServerFrame = (
         outbound: [],
         action: "none",
       };
+    }
     case "Recovering":
       return {
         snapshot: {
@@ -213,5 +218,10 @@ export const applyRuntimeServerFrame = (
     case "Pong":
     case "KeepAliveAck":
       return { snapshot: current, outbound: [], action: "none" };
+    default: {
+      const _exhaustive: never = frame;
+      void _exhaustive;
+      return { snapshot: current, outbound: [], action: "none" };
+    }
   }
 };

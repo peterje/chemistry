@@ -15,6 +15,10 @@ const partIdentity = (part: Prompt.Part): string => {
     case "tool-approval-request":
     case "tool-approval-response":
       return `${part.type}:${part.approvalId}`;
+    default: {
+      const _exhaustive: never = part;
+      return _exhaustive;
+    }
   }
 };
 
@@ -90,6 +94,10 @@ const renderPart = (part: Prompt.Part, key: string, assistant: boolean, user: bo
           {part.reason === undefined ? "" : `: ${part.reason}`}
         </p>
       );
+    default: {
+      const _exhaustive: never = part;
+      return _exhaustive;
+    }
   }
 };
 

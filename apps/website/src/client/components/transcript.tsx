@@ -1,6 +1,13 @@
+import { useState } from "react";
 import type { RuntimeSocketSnapshot } from "@chemistry/client-runtime/resumable-agent-socket";
 import { chatMessages, type SessionSnapshot } from "@chemistry/contracts/agent-protocol";
-import { LiveTurn } from "./live-turn.tsx";
+import {
+  HeldTurn,
+  LiveTurn,
+  liveStartedUserId,
+  nextHeldLiveTurns,
+  type HeldLiveTurn,
+} from "./live-turn.tsx";
 import { TranscriptRow } from "./transcript-row.tsx";
 
 /** Render durable transcript history plus the replay-safe in-flight turn. */
@@ -15,6 +22,7 @@ export function Transcript({
   failed: boolean;
   onRetry: () => void;
 }>) {
+  const [held, setHeld] = useState<ReadonlyArray<HeldLiveTurn>>([]);
   if (failed) {
     return (
       <div className="query-error" role="alert">
@@ -29,7 +37,14 @@ export function Transcript({
       </div>
     );
   }
-  if (snapshot === undefined && runtime.recentEvents.length === 0) {
+  const messages = snapshot === undefined ? [] : chatMessages(snapshot.chat);
+  const snapshotUserIds = new Set<string>();
+  for (const message of messages) {
+    if (message.message.role === "user") snapshotUserIds.add(message.id);
+  }
+  const nextHeld = nextHeldLiveTurns(held, runtime, snapshotUserIds);
+  if (nextHeld !== held) setHeld(nextHeld);
+  if (snapshot === undefined && runtime.recentEvents.length === 0 && nextHeld.length === 0) {
     return (
       <div className="transcript-shell transcript-loading" aria-label="Loading conversation">
         <span />
@@ -38,8 +53,21 @@ export function Transcript({
       </div>
     );
   }
-  const messages = snapshot === undefined ? [] : chatMessages(snapshot.chat);
-  if (messages.length === 0 && runtime.recentEvents.length === 0) {
+  const liveUserId = liveStartedUserId(runtime);
+  const persistedLiveUser =
+    liveUserId !== undefined && messages.some((message) => message.id === liveUserId);
+  const liveActive =
+    runtime.status === "recovering" ||
+    runtime.checkpoint === "admitted" ||
+    runtime.checkpoint === "preparing" ||
+    runtime.checkpoint === "streaming" ||
+    runtime.checkpoint === "partial-persisted";
+  const showLiveTurn =
+    liveActive ||
+    runtime.status === "failed" ||
+    (runtime.status === "completed" && liveUserId !== undefined && !persistedLiveUser);
+  const retainedTurns = nextHeld.filter((turn) => turn.userId !== liveUserId);
+  if (messages.length === 0 && runtime.recentEvents.length === 0 && retainedTurns.length === 0) {
     return (
       <div className="empty-state">
         <div className="empty-mark" aria-hidden="true">
@@ -57,7 +85,10 @@ export function Transcript({
           <TranscriptRow key={message.id} message={message} />
         ))}
       </ol>
-      <LiveTurn runtime={runtime} />
+      {retainedTurns.map((turn) => (
+        <HeldTurn key={turn.userId} turn={turn} />
+      ))}
+      {showLiveTurn ? <LiveTurn runtime={runtime} omitUser={persistedLiveUser} /> : null}
     </div>
   );
 }

@@ -198,3 +198,15 @@ test("transcript and history queries render recoverable network error states", a
   await expect(page.getByText("Couldn’t load conversation history.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(2);
 });
+
+test("a follow-up turn keeps the previous user message visible", async ({ page }) => {
+  await openNewChat(page);
+  await sendMessage(page, "hi");
+  await expect(page.locator("[data-runtime-status='completed']")).toBeVisible({ timeout: 90_000 });
+  await sendMessage(page, "ping");
+  await expect.poll(async () => page.locator(".message-user").count()).toBeGreaterThanOrEqual(2);
+  await expect(page.locator(".message-user .message-body").first()).toHaveText("hi");
+  await expect(page.locator(".message-user .message-body").last()).toHaveText("ping");
+  await expect(page.locator("[data-runtime-status='completed']")).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator(".message-user")).toHaveCount(2);
+});

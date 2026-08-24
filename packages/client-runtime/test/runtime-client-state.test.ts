@@ -194,5 +194,15 @@ describe("resumable browser runtime reducer", () => {
     );
     expect(failed.snapshot.status).toBe("failed");
     expect(failed.snapshot.terminalReason).toBe("recovery-attempts-exhausted");
+
+    const complete = applyRuntimeServerFrame(
+      failed.snapshot,
+      RuntimeServerFrame.cases.ResumeComplete.make({
+        streamId,
+        throughSequence: 5,
+      }),
+    );
+    expect(complete.snapshot.status).toBe("failed");
+    expect(complete.snapshot.lastSequence).toBe(5);
   });
 });

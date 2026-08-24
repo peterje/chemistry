@@ -16,7 +16,7 @@
     "destroy": "alchemy destroy",
     "ci:provision": "alchemy deploy stacks/github.ts --profile admin --stage infrastructure",
     "prepare": "lefthook install",
-    "lint": "oxlint .",
+    "lint": "bun --bun oxlint .",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:e2e": "RUN_LIVE_E2E=1 bun test apps/backend/test/live.e2e.test.ts",

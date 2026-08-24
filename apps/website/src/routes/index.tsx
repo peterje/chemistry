@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+import { acquireRootChatCreation, releaseRootChatCreation } from "../client/root-chat-creation.ts";
 import { useCreateChat } from "../client/use-create-chat.ts";
 
 /** Root route that durably creates a conversation before canonical navigation. */
@@ -9,12 +10,10 @@ export const Route = createFileRoute("/")({
 });
 
 function NewChatRedirect() {
-  const started = useRef(false);
   const { create, creating, error } = useCreateChat();
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
+    if (!acquireRootChatCreation()) return;
     create();
   }, [create]);
 
@@ -28,7 +27,7 @@ function NewChatRedirect() {
         <button
           type="button"
           onClick={() => {
-            started.current = false;
+            releaseRootChatCreation();
             create();
           }}
         >

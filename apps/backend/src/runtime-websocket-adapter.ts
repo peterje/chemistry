@@ -475,6 +475,10 @@ const buildRuntimeWebSocketAdapter = Effect.fn("RuntimeWebSocketAdapter.make")(f
         );
         return;
       }
+      default: {
+        const _exhaustive: never = frame;
+        return _exhaustive;
+      }
     }
   });
 

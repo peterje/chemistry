@@ -24,7 +24,7 @@ export type { RuntimeConnectionStatus, RuntimeSocketSnapshot } from "./runtime-c
 const MAX_RECONNECT_ATTEMPTS = 8;
 const MAX_RECONNECT_DELAY_MS = 10_000;
 const PING_INTERVAL_MS = 20_000;
-const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
 /** Build the runtime socket URL, bypassing the local Website worker's unsupported upgrade proxy. */
 export const runtimeSocketUrl = (locationHref: string, sessionId: SessionId): string => {
@@ -46,6 +46,9 @@ export class ResumableAgentSocket {
   #connectTimer: number | undefined;
   #reconnectTimer: number | undefined;
   #pingTimer: number | undefined;
+  #applyQueue: Promise<void> = Promise.resolve();
+  #sendQueue: Promise<void> = Promise.resolve();
+  #onlineListening = false;
 
   /** Construct a disconnected adapter for one durable session. */
   constructor(sessionId: SessionId) {
@@ -65,6 +68,7 @@ export class ResumableAgentSocket {
   connect = (): void => {
     if (this.#socket !== undefined || this.#connectTimer !== undefined) return;
     this.#closed = false;
+    this.#listenForOnline();
     this.#setSnapshot({ ...this.#snapshot, status: "connecting", error: null });
     this.#connectTimer = window.setTimeout(() => {
       this.#connectTimer = undefined;
@@ -74,11 +78,8 @@ export class ResumableAgentSocket {
       socket.addEventListener("message", (event) => {
         if (this.#socket !== socket) return;
         const encoded = Schema.decodeUnknownResult(Schema.String)(event.data);
-        if (Result.isFailure(encoded)) {
-          this.#fail("Received a binary runtime frame");
-          return;
-        }
-        void this.#handleMessage(socket, encoded.success);
+        if (Result.isFailure(encoded) || encoded.success.length === 0) return;
+        this.#enqueueApply(() => this.#handleMessage(socket, encoded.success));
       });
       socket.addEventListener("close", () => {
         if (this.#socket !== socket) return;
@@ -112,6 +113,7 @@ export class ResumableAgentSocket {
     if (this.#reconnectTimer !== undefined) window.clearTimeout(this.#reconnectTimer);
     this.#reconnectTimer = undefined;
     this.#reconnectAttempt = 0;
+    this.#unlistenOnline();
     this.#clearPing();
     const socket = this.#socket;
     this.#socket = undefined;
@@ -144,19 +146,39 @@ export class ResumableAgentSocket {
     }
   }
 
+  #enqueueApply(task: () => Promise<void>): void {
+    this.#applyQueue = this.#applyQueue.then(task, task);
+  }
+
   #send(frame: RuntimeClientFrame): void {
     const socket = this.#socket;
     if (socket?.readyState !== WebSocket.OPEN) return;
-    void Effect.runPromise(encodeRuntimeClientFrame(frame).pipe(Effect.result)).then((encoded) => {
-      if (Result.isFailure(encoded)) {
-        this.#fail(encoded.failure.message);
-        return;
-      }
-      if (socket.readyState === WebSocket.OPEN) socket.send(encoded.success);
-    });
+    this.#sendQueue = this.#sendQueue.then(
+      () => this.#flush(socket, frame),
+      () => this.#flush(socket, frame),
+    );
+  }
+
+  async #flush(socket: WebSocket, frame: RuntimeClientFrame): Promise<void> {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    const encoded = await Effect.runPromise(encodeRuntimeClientFrame(frame).pipe(Effect.result));
+    if (Result.isFailure(encoded)) {
+      this.#fail(encoded.failure.message);
+      return;
+    }
+    if (socket.readyState === WebSocket.OPEN) socket.send(encoded.success);
   }
 
   #scheduleReconnect(): void {
+    this.#listenForOnline();
+    if (globalThis.navigator?.onLine === false) {
+      this.#setSnapshot({
+        ...this.#snapshot,
+        status: "interrupted",
+        error: "Network is offline",
+      });
+      return;
+    }
     if (this.#reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
       this.#setSnapshot({
         ...this.#snapshot,
@@ -170,6 +192,7 @@ export class ResumableAgentSocket {
     this.#setSnapshot({ ...this.#snapshot, status: "connecting" });
     this.#reconnectTimer = window.setTimeout(() => {
       this.#reconnectTimer = undefined;
+      if (this.#closed) return;
       this.connect();
     }, delay);
   }
@@ -187,8 +210,35 @@ export class ResumableAgentSocket {
   }
 
   #fail(message: string): void {
-    this.#setSnapshot({ ...this.#snapshot, status: "failed", error: message });
+    const terminal = this.#snapshot.status === "completed" || this.#snapshot.status === "failed";
+    this.#setSnapshot({
+      ...this.#snapshot,
+      status: terminal ? this.#snapshot.status : "interrupted",
+      error: message,
+    });
     this.#socket?.close(1008, "protocol-failure");
+  }
+
+  #onOnline = (): void => {
+    if (this.#closed) return;
+    this.#reconnectAttempt = 0;
+    if (this.#reconnectTimer !== undefined) {
+      window.clearTimeout(this.#reconnectTimer);
+      this.#reconnectTimer = undefined;
+    }
+    if (this.#socket === undefined && this.#connectTimer === undefined) this.connect();
+  };
+
+  #listenForOnline(): void {
+    if (this.#onlineListening) return;
+    window.addEventListener("online", this.#onOnline);
+    this.#onlineListening = true;
+  }
+
+  #unlistenOnline(): void {
+    if (!this.#onlineListening) return;
+    window.removeEventListener("online", this.#onOnline);
+    this.#onlineListening = false;
   }
 
   #setSnapshot(snapshot: RuntimeSocketSnapshot): void {
