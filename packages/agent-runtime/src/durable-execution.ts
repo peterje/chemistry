@@ -302,11 +302,11 @@ const ownsUnexpiredLease = (
 
 const errorMessage = (error: DurableExecutionError): string => error.message;
 
-const isInferenceStall = (error: DurableExecutionError): boolean =>
-  error._tag === "AgentInferenceError" && error.operation === "inference-stall";
-
-const isStreamingTransportFailure = (error: DurableExecutionError): boolean =>
-  error._tag === "AgentInferenceError" && error.operation === "stream-text";
+const isRetryableInference = (error: DurableExecutionError): boolean =>
+  error._tag === "AgentInferenceError" &&
+  (error.operation === "inference-stall" ||
+    error.operation === "stream-text" ||
+    error.operation === "empty-model-stream");
 
 const isMemoryLimitReset = (error: DurableExecutionError): boolean =>
   error.message.toLowerCase().includes("exceeded its memory limit");
@@ -1073,8 +1073,7 @@ export const makeDurableExecutionLayer = (
                 (error) => {
                   const recoverable =
                     streaming.attempt > 0 ||
-                    isInferenceStall(error) ||
-                    isStreamingTransportFailure(error) ||
+                    isRetryableInference(error) ||
                     isMemoryLimitReset(error);
                   return Stream.unwrap(
                     recoverable

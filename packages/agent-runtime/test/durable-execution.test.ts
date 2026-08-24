@@ -136,7 +136,7 @@ describe("Effect-native durable execution", () => {
       }),
     ));
 
-  test("recovers a first-attempt stream-text abort instead of failing the turn", () =>
+  test("recovers a first-attempt empty model stream instead of failing the turn", () =>
     run(
       Effect.gen(function* () {
         const runtime = yield* DurableExecution;
@@ -145,8 +145,8 @@ describe("Effect-native durable execution", () => {
         yield* turns.setFailure(
           Option.some(
             new AgentInferenceError({
-              operation: "stream-text",
-              message: "The operation was aborted",
+              operation: "empty-model-stream",
+              message: "Model stream completed without text or tool output",
             }),
           ),
         );
