@@ -2,3 +2,8 @@ pre-commit:
   jobs:
     - name: verify
       run: bun run check
+
+commit-msg:
+  jobs:
+    - name: conventional-commit
+      run: bun commitlint --edit {1}
