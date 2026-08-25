@@ -8,8 +8,10 @@ import {
   StreamMessage,
   StreamMessagePart,
 } from "@chemistry/contracts/agent-protocol";
+import * as Prompt from "effect/unstable/ai/Prompt";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Transcript } from "../src/client/components/transcript.tsx";
+import { TranscriptRow } from "../src/client/components/transcript-row.tsx";
 import { nextHeldLiveTurns } from "../src/client/components/live-turn.tsx";
 
 const streamId = StreamId.make("stream-reload");
@@ -100,4 +102,39 @@ test("a completed live turn stays held across a follow-up TurnAccepted reset", (
 
   const caughtUp = nextHeldLiveTurns(stillHeld, nextTurn, new Set(["message-reload"]));
   expect(caughtUp).toHaveLength(0);
+});
+
+test("persisted reasoning parts are not rendered in the transcript", () => {
+  const markup = renderToStaticMarkup(
+    <TranscriptRow
+      message={{
+        id: MessageId.make("message-reasoning"),
+        createdAt: 1,
+        message: Prompt.assistantMessage({
+          content: [
+            Prompt.reasoningPart({ text: "hidden chain" }),
+            Prompt.textPart({ text: "visible answer" }),
+          ],
+        }),
+      }}
+    />,
+  );
+  expect(markup).toContain("visible answer");
+  expect(markup).not.toContain("hidden chain");
+  expect(markup).not.toContain("Reasoning");
+});
+
+test("reasoning-only assistant messages are omitted", () => {
+  const markup = renderToStaticMarkup(
+    <TranscriptRow
+      message={{
+        id: MessageId.make("message-reasoning-only"),
+        createdAt: 1,
+        message: Prompt.assistantMessage({
+          content: [Prompt.reasoningPart({ text: "hidden chain" })],
+        }),
+      }}
+    />,
+  );
+  expect(markup).toBe("");
 });

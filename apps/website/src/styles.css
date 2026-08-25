@@ -371,8 +371,8 @@ button {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
+  overflow-anchor: none;
   overscroll-behavior: contain;
-  scroll-behavior: smooth;
 }
 
 .transcript-shell,
@@ -497,8 +497,7 @@ button {
 }
 
 .markdown-content code,
-.tool-activity pre,
-.reasoning-activity pre {
+.tool-activity pre {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
@@ -510,8 +509,7 @@ button {
 }
 
 .markdown-content pre,
-.tool-activity pre,
-.reasoning-activity pre {
+.tool-activity pre {
   overflow-x: auto;
   border: 1px solid #2f3038;
   border-radius: 0.65rem;
@@ -541,8 +539,7 @@ button {
   text-align: left;
 }
 
-.tool-activity,
-.reasoning-activity {
+.tool-activity {
   max-width: 36rem;
   margin: 0.5rem 0;
   border: 1px solid var(--line);
@@ -552,8 +549,7 @@ button {
   font-size: 0.76rem;
 }
 
-.tool-activity summary,
-.reasoning-activity summary {
+.tool-activity summary {
   display: flex;
   align-items: center;
   gap: 0.45rem;
@@ -562,13 +558,11 @@ button {
   list-style: none;
 }
 
-.tool-activity summary::-webkit-details-marker,
-.reasoning-activity summary::-webkit-details-marker {
+.tool-activity summary::-webkit-details-marker {
   display: none;
 }
 
-.tool-activity pre,
-.reasoning-activity pre {
+.tool-activity pre {
   margin: 0 0.55rem 0.55rem;
   white-space: pre-wrap;
 }

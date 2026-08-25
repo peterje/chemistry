@@ -5,7 +5,7 @@ import { routeTree } from "./routeTree.ts";
 export function getRouter() {
   return createRouter({
     routeTree,
-    scrollRestoration: true,
+    scrollRestoration: false,
   });
 }
 

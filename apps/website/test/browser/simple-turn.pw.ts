@@ -50,6 +50,11 @@ test("canonical chat routing persists history and ACKs a real model turn", async
 
   const firstPath = await openNewChat(page);
   const app = page.locator(".chat-app");
+  await expect(app).not.toHaveClass(/sidebar-collapsed/);
+  await page.getByRole("button", { name: "Close conversation history" }).click();
+  await expect(app).toHaveClass(/sidebar-collapsed/);
+  await page.getByRole("button", { name: "Open conversation history" }).click();
+  await expect(app).not.toHaveClass(/sidebar-collapsed/);
   await page.getByRole("button", { name: "Close chats" }).click();
   await expect(app).toHaveClass(/sidebar-collapsed/);
   await expect
@@ -97,12 +102,23 @@ test("canonical chat routing persists history and ACKs a real model turn", async
   await expect(page.locator("[data-runtime-status='live']")).toBeVisible();
   await expect(page.locator(".chat-history .chat-link").first()).toHaveText("New chat");
   await expect(page.locator(".chat-history .chat-link").nth(1)).toHaveText("hi");
+  const historyCount = await page.locator(".chat-history .chat-link").count();
 
+  await page.evaluate(() => {
+    document.body.dataset.loadingFlash = "0";
+    new MutationObserver(() => {
+      if (document.querySelector('[aria-label="Loading conversation"]')) {
+        document.body.dataset.loadingFlash = "1";
+      }
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  });
   await page.locator(`.chat-history .chat-link[href="${firstPath}"]`).click();
   await expect(page).toHaveURL(firstPath);
   await expect(page.locator(".message-assistant .markdown-content").last()).toHaveText(
     assistantText,
   );
+  expect(await page.locator("body").getAttribute("data-loading-flash")).toBe("0");
+  await expect(page.locator(".chat-history .chat-link")).toHaveCount(historyCount);
 });
 
 test("reload reconnects to an in-flight durable stream before it completes", async ({ page }) => {

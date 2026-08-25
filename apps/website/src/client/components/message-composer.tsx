@@ -9,10 +9,12 @@ export function MessageComposer({
   socket,
   runtime,
   refreshSnapshot,
+  onSubmitted,
 }: Readonly<{
   socket: ResumableAgentSocket;
   runtime: RuntimeSocketSnapshot;
   refreshSnapshot: () => void;
+  onSubmitted?: () => void;
 }>) {
   const [prompt, setPrompt] = useState("");
 
@@ -30,7 +32,10 @@ export function MessageComposer({
     event.preventDefault();
     const message = prompt.trim();
     if (message.length === 0) return;
-    if (socket.submit(message) !== undefined) setPrompt("");
+    if (socket.submit(message) !== undefined) {
+      setPrompt("");
+      onSubmitted?.();
+    }
   };
 
   const turnInFlight =

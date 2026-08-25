@@ -49,12 +49,7 @@ const renderPart = (part: Prompt.Part, key: string, assistant: boolean, user: bo
         </p>
       );
     case "reasoning":
-      return (
-        <details className="reasoning-activity" key={key}>
-          <summary>Reasoning</summary>
-          <p>{part.text}</p>
-        </details>
-      );
+      return null;
     case "file":
       return (
         <p className="message-text" key={key}>
@@ -106,6 +101,18 @@ export function TranscriptRow({ message: entry }: Readonly<{ message: ChatMessag
   const { message } = entry;
   const assistant = message.role === "assistant";
   const user = message.role === "user";
+  const parts =
+    message.role === "system"
+      ? [
+          <p className="message-text" key={entry.id}>
+            {message.content}
+          </p>,
+        ]
+      : keyedParts(entry).flatMap(({ key, part }) => {
+          const rendered = renderPart(part, key, assistant, user);
+          return rendered === null ? [] : [rendered];
+        });
+  if (parts.length === 0) return null;
 
   return (
     <li className={`message message-${message.role}`}>
@@ -114,13 +121,7 @@ export function TranscriptRow({ message: entry }: Readonly<{ message: ChatMessag
           C
         </span>
       )}
-      <div className="message-body">
-        {message.role === "system" ? (
-          <p className="message-text">{message.content}</p>
-        ) : (
-          keyedParts(entry).map(({ key, part }) => renderPart(part, key, assistant, user))
-        )}
-      </div>
+      <div className="message-body">{parts}</div>
     </li>
   );
 }
