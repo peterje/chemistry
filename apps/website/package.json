@@ -1,0 +1,21 @@
+{
+  "name": "@starter/website",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && rm -rf .tanstack src/.tanstack",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "1.167.4",
+    "@tanstack/react-start": "1.166.15",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@tanstack/router-plugin": "1.168.27",
+    "@vitejs/plugin-react": "6.0.2",
+    "vite": "8.0.7"
+  }
+}

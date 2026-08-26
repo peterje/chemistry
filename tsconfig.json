@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "alchemy.run.ts",
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "stacks/**/*.ts",
+    "test/**/*.ts",
+    "test/**/*.tsx"
+  ]
+}

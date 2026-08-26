@@ -1,0 +1,94 @@
+:root {
+  color: #202123;
+  background: #ffffff;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  --muted: #6e6e80;
+  --line: #e5e5e8;
+  --soft: #f4f4f4;
+  --accent: #166534;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.demo-app {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 4rem 1.5rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3rem);
+  letter-spacing: -0.04em;
+}
+
+.lede {
+  margin: 1rem 0 1.75rem;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.phase {
+  margin: 0 0 1.25rem;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.demo-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.primary {
+  border: 0;
+  border-radius: 0.7rem;
+  background: #18181b;
+  color: #fff;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  font: inherit;
+}
+
+.primary:hover {
+  background: #27272a;
+}
+
+.count {
+  margin: 0;
+  font-size: 0.95rem;
+}
